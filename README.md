@@ -1,78 +1,124 @@
-<p align="center"><img src="https://res.cloudinary.com/dtfbvvkyp/image/upload/v1566331377/laravel-logolockup-cmyk-red.svg" width="400"></p>
+# Aplikasi Generator Sertifikat Bulk dengan Laravel
 
-<p align="center">
-<a href="https://travis-ci.org/laravel/framework"><img src="https://travis-ci.org/laravel/framework.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://poser.pugx.org/laravel/framework/d/total.svg" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://poser.pugx.org/laravel/framework/v/stable.svg" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://poser.pugx.org/laravel/framework/license.svg" alt="License"></a>
-</p>
+Aplikasi web sederhana yang dibangun menggunakan Laravel 7 untuk membuat sertifikat secara massal dari data file Excel/CSV. Aplikasi ini dilengkapi dengan dashboard admin, fitur preview, dan kemampuan untuk mengunduh semua sertifikat yang dihasilkan dalam satu file ZIP.
 
-## About Laravel
+<p align="center"><img src="https://i.imgur.com/ppyUYbu.png" width="1000"></p>
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+---
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Fitur Utama
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+-   **Dashboard Admin:** Halaman utama yang menampilkan statistik ringkas seperti total sertifikat, jumlah acara, dan grafik pembuatan sertifikat per bulan.
+-   **Generate Sertifikat Bulk:** Mengunggah file `.xlsx` atau `.csv` yang berisi daftar nama peserta untuk dibuatkan sertifikat secara otomatis.
+-   **Unduh dalam Format ZIP:** Semua sertifikat yang berhasil dibuat akan dibungkus dalam satu file `.zip` untuk kemudahan distribusi.
+-   **Penamaan File Otomatis:** Setiap file PDF di dalam ZIP akan diberi nama secara otomatis berdasarkan urutan dan nama peserta (contoh: `1_budi-sanjaya.pdf`).
+-   **Tanda Tangan Dinamis:** Kemampuan untuk memilih jumlah penandatangan (1, 2, atau 3) dan mengunggah nama, jabatan, serta gambar tanda tangan untuk masing-masing.
+-   **Preview Sertifikat:** Sebelum men-generate secara massal, pengguna bisa melihat pratinjau desain sertifikat dengan data yang diinput.
+-   **Format Tanggal Cerdas:** Secara otomatis memformat tanggal acara menjadi satu tanggal (misal: `7 Juli 2025`) atau rentang tanggal (misal: `7 - 9 Juli 2025`) tergantung input.
 
-## Learning Laravel
+## Teknologi yang Digunakan
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+-   **Backend:** PHP 7.4, Laravel 7
+-   **Frontend:** AdminLTE 3, Bootstrap 4, jQuery
+-   **Database:** MySQL (dapat disesuaikan)
+-   **Dependensi Utama:**
+    -   `barryvdh/laravel-dompdf`: Untuk konversi HTML ke PDF.
+    -   `maatwebsite/excel`: Untuk membaca data dari file Excel dan CSV.
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains over 1500 video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+---
 
-## Laravel Sponsors
+## Panduan Instalasi Lokal
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the Laravel [Patreon page](https://patreon.com/taylorotwell).
+Untuk menjalankan proyek ini di lingkungan lokal (misalnya menggunakan XAMPP), ikuti langkah-langkah berikut:
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Cubet Techno Labs](https://cubettech.com)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[British Software Development](https://www.britishsoftware.co)**
-- **[Webdock, Fast VPS Hosting](https://www.webdock.io/en)**
-- **[DevSquad](https://devsquad.com)**
-- [UserInsights](https://userinsights.com)
-- [Fragrantica](https://www.fragrantica.com)
-- [SOFTonSOFA](https://softonsofa.com/)
-- [User10](https://user10.com)
-- [Soumettre.fr](https://soumettre.fr/)
-- [CodeBrisk](https://codebrisk.com)
-- [1Forge](https://1forge.com)
-- [TECPRESSO](https://tecpresso.co.jp/)
-- [Runtime Converter](http://runtimeconverter.com/)
-- [WebL'Agence](https://weblagence.com/)
-- [Invoice Ninja](https://www.invoiceninja.com)
-- [iMi digital](https://www.imi-digital.de/)
-- [Earthlink](https://www.earthlink.ro/)
-- [Steadfast Collective](https://steadfastcollective.com/)
-- [We Are The Robots Inc.](https://watr.mx/)
-- [Understand.io](https://www.understand.io/)
-- [Abdel Elrafa](https://abdelelrafa.com)
-- [Hyper Host](https://hyper.host)
-- [Appoly](https://www.appoly.co.uk)
-- [OP.GG](https://op.gg)
+### Prasyarat
 
-## Contributing
+-   PHP versi 7.4
+-   Composer
+-   Node.js & NPM
+-   Server lokal seperti XAMPP atau Laragon
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### Langkah-langkah Instalasi
 
-## Code of Conduct
+1.  **Clone Repositori**
+    ```bash
+    git clone [https://github.com/NAMA_PENGGUNA_ANDA/NAMA_REPOSITORI_ANDA.git](https://github.com/NAMA_PENGGUNA_ANDA/NAMA_REPOSITORI_ANDA.git)
+    cd NAMA_REPOSITORI_ANDA
+    ```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+2.  **Install Dependensi PHP**
+    ```bash
+    composer install
+    ```
 
-## Security Vulnerabilities
+3.  **Buat File `.env`**
+    Salin file `.env.example` menjadi `.env`.
+    ```bash
+    copy .env.example .env
+    ```
+    (Untuk pengguna Linux/Mac, gunakan `cp .env.example .env`)
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+4.  **Generate Kunci Aplikasi**
+    ```bash
+    php artisan key:generate
+    ```
 
-## License
+5.  **Konfigurasi Database**
+    -   Buka phpMyAdmin atau tool database Anda dan buat database baru (misalnya `db_sertifikat`).
+    -   Buka file `.env` dan sesuaikan pengaturan database Anda:
+        ```env
+        DB_CONNECTION=mysql
+        DB_HOST=127.0.0.1
+        DB_PORT=3306
+        DB_DATABASE=db_sertifikat
+        DB_USERNAME=root
+        DB_PASSWORD=
+        ```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+6.  **Jalankan Migrasi**
+    Perintah ini akan membuat semua tabel yang dibutuhkan di database Anda.
+    ```bash
+    php artisan migrate
+    ```
+
+7.  **Install Dependensi JavaScript**
+    ```bash
+    npm install
+    ```
+
+8.  **Kompilasi Aset Frontend**
+    ```bash
+    npm run dev
+    ```
+
+9.  **Jalankan Server**
+    ```bash
+    php artisan serve
+    ```
+    Aplikasi Anda sekarang berjalan di `http://127.0.0.1:8000`.
+
+---
+
+## Cara Penggunaan
+
+1.  Buka browser dan akses halaman dashboard: `http://127.0.0.1:8000/dashboard`.
+2.  Navigasikan ke menu "Generate Bulk".
+3.  Isi semua informasi acara (nama, tanggal mulai, tanggal akhir).
+4.  Pilih jumlah penandatangan yang diinginkan.
+5.  Isi nama, jabatan, dan unggah gambar tanda tangan untuk setiap penandatangan.
+6.  Unggah file Excel/CSV yang berisi daftar nama peserta di kolom pertama.
+7.  Klik tombol **"Generate & Download ZIP"**.
+8.  Tunggu beberapa saat hingga proses selesai dan file ZIP akan terunduh secara otomatis.
+
+## Troubleshooting
+
+-   **Unduhan Gagal dengan "Server Problem" atau `download.htm`:**
+    -   Masalah ini seringkali disebabkan oleh ekstensi `ZipArchive` yang tidak aktif di PHP. Pastikan baris `extension=zip` tidak memiliki tanda titik koma (`;`) di depannya pada file `php.ini` Anda, lalu restart Apache.
+    -   Coba gunakan browser lain seperti Firefox. Aplikasi pihak ketiga seperti Internet Download Manager (IDM) atau fitur bawaan browser tertentu (seperti Opera GX) terkadang gagal menangani unduhan file yang dibuat secara dinamis.
+
+-   **Error `Class '...' not found`:**
+    Jalankan perintah `composer dump-autoload` untuk menyegarkan daftar class aplikasi Anda.
+
+## Lisensi
+
+Proyek ini dilisensikan di bawah [MIT License](LICENSE).
