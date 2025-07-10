@@ -3,159 +3,81 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 use Maatwebsite\Excel\Facades\Excel;
 use App\Certificate;
 use Illuminate\Support\Facades\File;
 use ZipArchive;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\Log; 
+use Illuminate\Support\Facades\Log;
+use Throwable;
+use Spatie\Browsershot\Browsershot; // Import Browsershot
 use Illuminate\Validation\ValidationException;
 
 class BulkController extends Controller
 {
-    /**
-     * Menampilkan form untuk generate sertifikat bulk.
-     */
     public function index()
     {
         return view('generate-bulk');
     }
 
-    /**
-     * Menangani form untuk membuat preview PDF sertifikat.
-     */
     public function preview(Request $request)
     {
-        // 1. Validasi input (dibuat lebih longgar untuk preview)
-        $request->validate([
-            'event_name' => 'required|string|max:255',
-            'start_date' => 'required|date',
-            'end_date'   => 'required|date|after_or_equal:start_date',
-            'signature_count' => 'required|integer|min:1|max:3',
-            'signatures.*.image' => 'nullable|image|mimes:png|max:1024', // Gambar opsional
-        ]);
+        try {
+            // Validasi untuk data yang dibutuhkan preview
+            $request->validate([
+                'event_name' => 'required|string|max:255',
+                'certificate_type' => 'required|string',
+                'template_json' => 'required|json',
+                'start_date' => 'required|date',
+                'end_date'   => 'required|date|after_or_equal:start_date',
+                'signing_date' => 'required|date',
+            ]);
 
-        // 2. Logika pemformatan tanggal (tidak berubah)
-        $startDate = Carbon::parse($request->start_date);
-        $endDate = Carbon::parse($request->end_date);
-        $formattedDate = '';
-        if ($startDate->isSameDay($endDate)) {
-            $formattedDate = $startDate->isoFormat('D MMMM Y');
-        } else {
-            if ($startDate->month == $endDate->month && $startDate->year == $endDate->year) {
-                $formattedDate = $startDate->format('d') . ' - ' . $endDate->isoFormat('D MMMM Y');
-            } else if ($startDate->year == $endDate->year) {
-                $formattedDate = $startDate->isoFormat('D MMMM') . ' - ' . $endDate->isoFormat('D MMMM Y');
-            } else {
-                $formattedDate = $startDate->isoFormat('D MMMM Y') . ' - ' . $endDate->isoFormat('D MMMM Y');
-            }
+            $templateJson = json_decode($request->template_json, true);
+            
+            // Siapkan data dummy untuk preview
+            $participantData = $this->prepareParticipantData($request, [
+                'Nama Peserta Contoh', // recipientName
+                'email@contoh.com',    // recipientEmail
+                'Peran Peserta Contoh',// recipientRole
+                'ID12345',             // recipientId
+                'Divisi Contoh'        // recipientDivision
+            ]);
+
+            $html = view('certificates.renderer', compact('templateJson', 'participantData'))->render();
+
+            $pdf = Browsershot::html($html)->format('A4')->landscape()->pdf();
+            
+            return response($pdf, 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="preview-sertifikat.pdf"',
+            ]);
+
+        } catch (Throwable $e) {
+            Log::error('Error saat preview sertifikat: ' . $e->getMessage());
+            return response('<h1>Gagal Membuat Preview</h1><p>Error: ' . $e->getMessage() . '</p><pre>' . $e->getTraceAsString() . '</pre>', 500);
         }
-
-        // --- BAGIAN YANG DIPERBAIKI: Memproses data tanda tangan ---
-        $signatureData = [];
-        if ($request->has('signatures')) {
-            foreach ($request->signatures as $key => $signature) {
-                // Hanya proses sejumlah yang dipilih di dropdown
-                if ($key < $request->signature_count) {
-                    $image_path = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='; // Placeholder transparan
-
-                    // Cek jika ada file gambar yang di-upload untuk preview
-                    if ($request->hasFile("signatures.{$key}.image")) {
-                        $path = $request->file("signatures.{$key}.image")->getRealPath();
-                        $type = pathinfo($path, PATHINFO_EXTENSION);
-                        $imgData = file_get_contents($path);
-                        $image_path = 'data:image/' . $type . ';base64,' . base64_encode($imgData);
-                    }
-
-                    $signatureData[] = [
-                        'name' => $signature['name'] ?? 'Nama Penandatangan',
-                        'title' => $signature['title'] ?? 'Jabatan',
-                        'image_path' => $image_path
-                    ];
-                }
-            }
-        }
-
-        // 4. Siapkan data untuk dikirim ke view PDF
-        $data = [
-            'recipientName'     => 'Nama Peserta Contoh',
-            'eventName'         => $request->event_name,
-            'formattedDate'     => $formattedDate,
-            'certificateNumber' => date('Y') . '/PREVIEW/' . Str::random(8),
-            'signatures'        => $signatureData // Kirim data tanda tangan yang sudah diproses
-        ];
-
-        $pdf = Pdf::loadView('certificates.template', $data)
-                    ->setPaper('a4', 'landscape');
-
-        return $pdf->stream('preview-sertifikat.pdf');
     }
-
     
     public function storeAndDownloadZip(Request $request)
     {
         try {
             set_time_limit(0);
-            ini_set('memory_limit', '256M');
+            ini_set('memory_limit', '512M');
 
-            // Validasi dasar
+            // Validasi lengkap untuk proses generate
             $request->validate([
                 'event_name' => 'required|string|max:255',
+                'certificate_type' => 'required|string',
                 'start_date' => 'required|date',
                 'end_date'   => 'required|date|after_or_equal:start_date',
+                'signing_date' => 'required|date',
+                'template_json' => 'required|json',
                 'participant_file' => 'required|file|mimes:csv,xlsx,txt',
-                'signature_count' => 'required|integer|min:1|max:3',
             ]);
 
-            // Validasi dinamis untuk tanda tangan
-            $signatureRules = [];
-            for ($i = 0; $i < $request->signature_count; $i++) {
-                $signatureRules["signatures.{$i}.name"] = 'required|string|max:255';
-                $signatureRules["signatures.{$i}.title"] = 'required|string|max:255';
-                $signatureRules["signatures.{$i}.image"] = 'required|image|mimes:png|max:1024';
-            }
-            $request->validate($signatureRules, [
-                'signatures.*.name.required' => 'Nama penandatangan #:position wajib diisi.',
-                'signatures.*.title.required' => 'Jabatan penandatangan #:position wajib diisi.',
-                'signatures.*.image.required' => 'Gambar tanda tangan #:position wajib diisi.',
-            ]);
-
-            // Logika pemformatan tanggal
-            $startDate = Carbon::parse($request->start_date);
-            $endDate = Carbon::parse($request->end_date);
-            $formattedDate = '';
-            if ($startDate->isSameDay($endDate)) {
-                $formattedDate = $startDate->isoFormat('D MMMM Y');
-            } else {
-                if ($startDate->month == $endDate->month && $startDate->year == $endDate->year) {
-                    $formattedDate = $startDate->format('d') . ' - ' . $endDate->isoFormat('D MMMM Y');
-                } else if ($startDate->year == $endDate->year) {
-                    $formattedDate = $startDate->isoFormat('D MMMM') . ' - ' . $endDate->isoFormat('D MMMM Y');
-                } else {
-                    $formattedDate = $startDate->isoFormat('D MMMM Y') . ' - ' . $endDate->isoFormat('D MMMM Y');
-                }
-            }
-
-            // Simpan file tanda tangan ke penyimpanan sementara
-            $tempSignatureDir = 'temp_signatures/' . uniqid();
-            $signatureData = [];
-            if ($request->has('signatures')) {
-                foreach ($request->signatures as $key => $signature) {
-                    if ($key < $request->signature_count) {
-                        $path = $request->file("signatures.{$key}.image")->store($tempSignatureDir, 'local');
-                        $signatureData[] = [
-                            'name' => $signature['name'],
-                            'title' => $signature['title'],
-                            'image_path' => storage_path('app/' . $path)
-                        ];
-                    }
-                }
-            }
-
-            // Baca file Excel/CSV
+            $templateJson = json_decode($request->template_json, true);
             $participants = Excel::toCollection(null, $request->file('participant_file'))[0];
             $tempPdfDir = storage_path('app/temp_certificates/' . uniqid());
             File::makeDirectory($tempPdfDir, 0755, true, true);
@@ -165,48 +87,32 @@ class BulkController extends Controller
 
             // Loop untuk setiap peserta
             foreach ($participants as $key => $participant) {
-                if ($key == 0 && (strtolower($participant[0]) == 'nama' || strtolower($participant[0]) == 'name')) {
-                    continue;
-                }
-                $recipientName = $participant[0];
-                if (empty(trim($recipientName))) {
-                    continue;
-                }
+                if ($key == 0) continue; // Lewati baris header
+                $recipientName = trim($participant[0] ?? '');
+                if (empty($recipientName)) continue;
 
-                $certificateNumber = date('Y') . '/' . date('m') . '/CERT/' . Str::random(8);
-                Certificate::create([
-                    'recipient_name' => $recipientName,
-                    'event_name' => $request->event_name,
-                    'event_date' => $request->start_date,
-                    'certificate_number' => $certificateNumber
-                ]);
+                // Siapkan data dari form dan excel untuk peserta ini
+                $participantData = $this->prepareParticipantData($request, $participant);
 
-                $data = [
-                    'recipientName'     => $recipientName,
-                    'eventName'         => $request->event_name,
-                    'formattedDate'     => $formattedDate,
-                    'certificateNumber' => $certificateNumber,
-                    'signatures'        => $signatureData
-                ];
+                // Render view dengan data untuk Browsershot
+                $html = view('certificates.renderer', compact('templateJson', 'participantData'))->render();
 
-                $pdfFileName = $counter . '_' . Str::slug($recipientName) . '.pdf';
-                $pdfPath = $tempPdfDir . '/' . $pdfFileName;
-                Pdf::loadView('certificates.template', $data)->setPaper('a4', 'landscape')->save($pdfPath);
+                // Generate PDF menggunakan Browsershot
+                $pdfPath = $tempPdfDir . '/' . $counter . '_' . Str::slug($recipientName) . '.pdf';
+                
+                Browsershot::html($html)->format('A4')->landscape()->save($pdfPath);
+
                 $pdfPaths[] = $pdfPath;
                 $counter++;
             }
 
             if (empty($pdfPaths)) {
-                if(isset($tempSignatureDir)) File::deleteDirectory(storage_path('app/' . $tempSignatureDir));
-                File::deleteDirectory($tempPdfDir);
                 return back()->withErrors(['participant_file' => 'Tidak ada data peserta yang valid ditemukan di dalam file.']);
             }
 
             // Buat file ZIP
+            $zipPath = storage_path('app/sertifikat-' . Str::slug($request->event_name) . '.zip');
             $zip = new ZipArchive;
-            $zipFileName = 'sertifikat-' . Str::slug($request->event_name) . '.zip';
-            $zipPath = storage_path('app/' . $zipFileName);
-
             if ($zip->open($zipPath, ZipArchive::CREATE) === TRUE) {
                 foreach ($pdfPaths as $path) {
                     $zip->addFile($path, basename($path));
@@ -214,9 +120,7 @@ class BulkController extends Controller
                 $zip->close();
             }
 
-            // Hapus semua direktori sementara
             File::deleteDirectory($tempPdfDir);
-            if(isset($tempSignatureDir)) File::deleteDirectory(storage_path('app/' . $tempSignatureDir));
 
             return response()->download($zipPath)->deleteFileAfterSend(true);
 
@@ -224,9 +128,57 @@ class BulkController extends Controller
             throw $e;
         } catch (Throwable $e) {
             Log::error('Error saat generate sertifikat bulk: ' . $e->getMessage() . ' di file ' . $e->getFile() . ' baris ' . $e->getLine());
-            if (isset($tempPdfDir) && File::isDirectory($tempPdfDir)) File::deleteDirectory($tempPdfDir);
-            if (isset($tempSignatureDir) && File::isDirectory(storage_path('app/' . $tempSignatureDir))) File::deleteDirectory(storage_path('app/' . $tempSignatureDir));
-            return back()->withErrors(['error' => 'Terjadi kesalahan server yang tidak terduga: ' . $e->getMessage()]);
+            return back()->withErrors(['error' => 'Terjadi kesalahan server: ' . $e->getMessage()]);
         }
+    }
+
+    /**
+     * Helper function untuk menyiapkan data yang akan dikirim ke view renderer.
+     */
+    private function prepareParticipantData(Request $request, $participantRow)
+    {
+        // Format tanggal acara
+        $startDate = Carbon::parse($request->start_date);
+        $endDate = Carbon::parse($request->end_date);
+        $formattedEventDate = '';
+        if ($startDate->isSameDay($endDate)) {
+            $formattedEventDate = $startDate->isoFormat('D MMMM Y');
+        } else {
+            if ($startDate->month == $endDate->month && $startDate->year == $endDate->year) {
+                $formattedEventDate = $startDate->format('d') . ' - ' . $endDate->isoFormat('D MMMM Y');
+            } else {
+                $formattedEventDate = $startDate->isoFormat('D MMMM') . ' - ' . $endDate->isoFormat('D MMMM Y');
+            }
+        }
+
+        // Format tanggal penandatanganan
+        $formattedSigningDate = Carbon::parse($request->signing_date)->isoFormat('D MMMM Y');
+
+        // Gabungkan ID dan Divisi
+        $recipientId = trim($participantRow[3] ?? '');
+        $recipientDivision = trim($participantRow[4] ?? '');
+        $recipientFullId = trim("{$recipientId} / {$recipientDivision}", ' /');
+
+        return [
+            // Data dari Excel/dummy
+            'recipientName'     => trim($participantRow[0] ?? ''),
+            'recipientEmail'    => trim($participantRow[1] ?? ''),
+            'recipientRole'     => trim($participantRow[2] ?? ''),
+            'recipientId'       => $recipientId,
+            'recipientDivision' => $recipientDivision,
+            'recipientFullId'   => $recipientFullId,
+
+            // Data dari Form
+            'certificateType'   => $request->certificate_type,
+            'eventName'         => $request->event_name,
+            'eventDate'         => $formattedEventDate,
+            'signingDate'       => $formattedSigningDate,
+            'description1'      => $request->descriptions[0] ?? '',
+            'description2'      => $request->descriptions[1] ?? '',
+            'description3'      => $request->descriptions[2] ?? '',
+            
+            // Data yang di-generate (hanya untuk proses bulk)
+            'certificateNumber' => date('Y') . '/' . date('m') . '/CERT/' . Str::random(8),
+        ];
     }
 }
