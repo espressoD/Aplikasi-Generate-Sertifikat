@@ -6,6 +6,9 @@
   <title>@yield('title', 'Dashboard Sertifikat')</title>
 
   <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
+  <!-- AdminLTE -->
+  <link rel="stylesheet" href="{{ asset('css/adminlte.min.css') }}">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="{{ asset('css/app.css') }}">
   @stack('css')
 </head>
@@ -43,9 +46,17 @@
   @include('layouts._partials.footer')
 
 </div>
-<script src="{{ asset('js/app.js') }}"></script>
+<!-- jQuery (WAJIB sebelum app.js!) -->
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+<!-- Bootstrap Bundle (opsional tapi biasa dibutuhkan AdminLTE) -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- AdminLTE -->
+<script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
+<script src="{{ asset('js/app.js') }}"></script>
+{{-- <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script> --}}
 
 @stack('scripts')
 </body>

@@ -7,57 +7,42 @@ use Illuminate\Support\Str;
 use Carbon\Carbon;
 use Maatwebsite\Excel\Facades\Excel;
 use App\Certificate;
+use App\CertificateTemplate;
 use Illuminate\Support\Facades\File;
 use ZipArchive;
 use Illuminate\Support\Facades\Log;
 use Throwable;
-use Spatie\Browsershot\Browsershot; // Import Browsershot
+use Spatie\Browsershot\Browsershot;
 use Illuminate\Validation\ValidationException;
+use Intervention\Image\ImageManagerStatic as Image;
 
 class BulkController extends Controller
 {
     public function index()
     {
-        return view('generate-bulk');
+        // Ambil semua template dari database, diurutkan berdasarkan nama
+        $templates = CertificateTemplate::orderBy('name', 'asc')->get()->keyBy('id');
+
+        // Kirim data template ke view
+        return view('generate-bulk', compact('templates'));
     }
 
-    public function preview(Request $request)
+    public function renderForPreview(Request $request)
     {
-        try {
-            // Validasi untuk data yang dibutuhkan preview
-            $request->validate([
-                'event_name' => 'required|string|max:255',
-                'certificate_type' => 'required|string',
-                'template_json' => 'required|json',
-                'start_date' => 'required|date',
-                'end_date'   => 'required|date|after_or_equal:start_date',
-                'signing_date' => 'required|date',
-            ]);
+        // Fungsi ini tidak membuat PDF, hanya menyiapkan data dan menampilkan view.
+        $request->validate([
+            'template_json' => 'required|json',
+            // Hapus validasi lain karena ini hanya untuk render visual
+        ]);
 
-            $templateJson = json_decode($request->template_json, true);
-            
-            // Siapkan data dummy untuk preview
-            $participantData = $this->prepareParticipantData($request, [
-                'Nama Peserta Contoh', // recipientName
-                'email@contoh.com',    // recipientEmail
-                'Peran Peserta Contoh',// recipientRole
-                'ID12345',             // recipientId
-                'Divisi Contoh'        // recipientDivision
-            ]);
+        $templateJson = json_decode($request->template_json, true);
+        $signatureData = $this->prepareSignatureData($request);
+        $participantData = $this->prepareParticipantData($request, [
+            'Nama Peserta Contoh', 'email@contoh.com', 'Peran Peserta Contoh', 'ID12345', 'Divisi Contoh'
+        ], $signatureData);
 
-            $html = view('certificates.renderer', compact('templateJson', 'participantData'))->render();
-
-            $pdf = Browsershot::html($html)->format('A4')->landscape()->pdf();
-            
-            return response($pdf, 200, [
-                'Content-Type' => 'application/pdf',
-                'Content-Disposition' => 'inline; filename="preview-sertifikat.pdf"',
-            ]);
-
-        } catch (Throwable $e) {
-            Log::error('Error saat preview sertifikat: ' . $e->getMessage());
-            return response('<h1>Gagal Membuat Preview</h1><p>Error: ' . $e->getMessage() . '</p><pre>' . $e->getTraceAsString() . '</pre>', 500);
-        }
+        // Langsung kembalikan view, jangan buat PDF
+        return view('certificates.renderer', compact('templateJson', 'participantData'));
     }
     
     public function storeAndDownloadZip(Request $request)
@@ -78,6 +63,7 @@ class BulkController extends Controller
             ]);
 
             $templateJson = json_decode($request->template_json, true);
+            $signatureData = $this->prepareSignatureData($request);
             $participants = Excel::toCollection(null, $request->file('participant_file'))[0];
             $tempPdfDir = storage_path('app/temp_certificates/' . uniqid());
             File::makeDirectory($tempPdfDir, 0755, true, true);
@@ -87,20 +73,22 @@ class BulkController extends Controller
 
             // Loop untuk setiap peserta
             foreach ($participants as $key => $participant) {
-                if ($key == 0) continue; // Lewati baris header
+                if ($key == 0) continue;
                 $recipientName = trim($participant[0] ?? '');
                 if (empty($recipientName)) continue;
 
-                // Siapkan data dari form dan excel untuk peserta ini
-                $participantData = $this->prepareParticipantData($request, $participant);
-
-                // Render view dengan data untuk Browsershot
+                $participantData = $this->prepareParticipantData($request, $participant, $signatureData);
                 $html = view('certificates.renderer', compact('templateJson', 'participantData'))->render();
-
-                // Generate PDF menggunakan Browsershot
                 $pdfPath = $tempPdfDir . '/' . $counter . '_' . Str::slug($recipientName) . '.pdf';
                 
-                Browsershot::html($html)->format('A4')->landscape()->save($pdfPath);
+                // Pastikan path node juga ada di sini
+                Browsershot::html($html)
+                    ->setNodeBinary('C:\\Program Files\\nodejs\\node.exe') // Sesuaikan path ini jika perlu
+                    ->setOption('executablePath', 'C:/Program Files/Google/Chrome/Application/chrome.exe')
+                    ->waitForFunction('window.renderingComplete === true', ['timeout' => 15000])
+                    ->format('A4')
+                    ->landscape()
+                    ->save($pdfPath);
 
                 $pdfPaths[] = $pdfPath;
                 $counter++;
@@ -133,9 +121,38 @@ class BulkController extends Controller
     }
 
     /**
+     * Helper function BARU untuk memproses data tanda tangan dari form.
+     */
+    private function prepareSignatureData(Request $request)
+    {
+        $signatureData = [];
+        if ($request->has('signatures')) {
+            foreach ($request->signatures as $key => $signature) {
+                if ($key < $request->signature_count) {
+                    $image_base64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='; // Placeholder
+                    
+                    if ($request->hasFile("signatures.{$key}.image")) {
+                        $path = $request->file("signatures.{$key}.image")->getRealPath();
+                        $type = pathinfo($path, PATHINFO_EXTENSION);
+                        $imgData = file_get_contents($path);
+                        $image_base64 = 'data:image/' . $type . ';base64,' . base64_encode($imgData);
+                    }
+
+                    $signatureData[$key] = [
+                        'name' => $signature['name'] ?? '',
+                        'title' => $signature['title'] ?? '',
+                        'image_base64' => $image_base64
+                    ];
+                }
+            }
+        }
+        return $signatureData;
+    }
+
+    /**
      * Helper function untuk menyiapkan data yang akan dikirim ke view renderer.
      */
-    private function prepareParticipantData(Request $request, $participantRow)
+    private function prepareParticipantData(Request $request, $participantRow, $signatureData)
     {
         // Format tanggal acara
         $startDate = Carbon::parse($request->start_date);
@@ -176,6 +193,7 @@ class BulkController extends Controller
             'description1'      => $request->descriptions[0] ?? '',
             'description2'      => $request->descriptions[1] ?? '',
             'description3'      => $request->descriptions[2] ?? '',
+            'signatures'        => $signatureData,
             
             // Data yang di-generate (hanya untuk proses bulk)
             'certificateNumber' => date('Y') . '/' . date('m') . '/CERT/' . Str::random(8),

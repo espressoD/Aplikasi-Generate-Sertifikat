@@ -13,9 +13,12 @@
         "fideloper/proxy": "^4.2",
         "fruitcake/laravel-cors": "^1.0",
         "guzzlehttp/guzzle": "^6.3",
+        "intervention/image": "^2.7",
         "laravel/framework": "^7.0",
         "laravel/tinker": "^2.0",
-        "maatwebsite/excel": "^3.1"
+        "maatwebsite/excel": "^3.1",
+        "setasign/fpdi-tcpdf": "^2.3",
+        "spatie/browsershot": "^3.58"
     },
     "require-dev": {
         "facade/ignition": "^2.0",
