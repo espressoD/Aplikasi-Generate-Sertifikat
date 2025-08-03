@@ -1,11 +1,6 @@
 # Aplikasi Generator Sertifikat Bulk dengan Laravel
 
-Aplikasi web canggih yang dibangun menggunakan Laravel 7 untuk membuat sertifikat secara massal dari da2.  **Isi Form Data:**
-    -   Pilih jenis sertifikat dan isi nama acara.
-    -   **Input Nomor Sertifikat:** Masukkan prefix seperti `CERT-2025-001` (akan otomatis bertambah).
-    -   Atur tanggal mulai, akhir acara.
-    -   **Input Tempat & Tanggal Penandatanganan:** Masukkan tempat (contoh: "Bandung") dan tanggal penandatanganan.
-    -   Tambahkan deskripsi kustom jika diperlukan.le Excel/CSV. Aplikasi ini dilengkapi dengan dashboard admin, editor template dinamis, sistem queue untuk performa optimal, dan kemampuan untuk mengunduh semua sertifikat yang dihasilkan dalam satu file ZIP dengan unduhan otomatis.
+Aplikasi web canggih yang dibangun menggunakan Laravel 7 untuk membuat sertifikat secara massal dari data Excel/CSV dan database karyawan. Aplikasi ini dilengkapi dengan dashboard admin, editor template dinamis, sistem queue untuk performa optimal, dual data source (file upload & database), manajemen karyawan dengan CRUD, dan kemampuan untuk mengunduh semua sertifikat yang dihasilkan dalam satu file ZIP dengan unduhan otomatis.
 
 <p align="center"><img src="https://i.imgur.com/ppyUYbu.png" width="1000"></p>
 
@@ -25,17 +20,32 @@ Aplikasi web canggih yang dibangun menggunakan Laravel 7 untuk membuat sertifika
 -   **Batch Management:** Lihat status batch, progress, dan download ZIP files.
 -   **Individual Access:** Lihat dan download sertifikat individual dengan sistem preview.
 
-### 🚀 **Sistem Queue & Performance**
+### �️ **Dual Data Source System**
+-   **File Upload:** Upload file Excel/CSV seperti fitur sebelumnya.
+-   **Database Integration:** Kelola data karyawan langsung di database dengan sistem CRUD lengkap.
+-   **Seamless Toggle:** Beralih antara sumber data file dan database dengan mudah.
+-   **Cross-page Selection:** Pilih karyawan dari berbagai halaman dengan state management.
+
+### 👥 **Manajemen Karyawan Advanced**
+-   **CRUD Operations:** Tambah, edit, hapus karyawan dengan validasi lengkap.
+-   **AJAX Interface:** Semua operasi tanpa reload halaman untuk UX yang optimal.
+-   **Smart Search:** Pencarian real-time berdasarkan nama dan NPK.
+-   **Division Filter:** Filter karyawan berdasarkan divisi dengan dropdown dinamis.
+-   **Pagination:** Navigasi data dengan pagination yang responsive.
+-   **Bulk Selection:** Pilih semua karyawan di seluruh halaman, bukan hanya halaman aktif.
+
+### �🚀 **Sistem Queue & Performance**
 -   **Background Processing:** Menggunakan Laravel Queue untuk pemrosesan background yang optimal.
 -   **Progress Tracking:** Real-time progress bar dengan polling untuk monitoring batch generation.
 -   **Auto Download:** ZIP file otomatis terdownload ketika batch selesai diproses.
 -   **Batch Recording:** Setiap batch dan sertifikat individual tercatat di database.
 
 ### 📝 **Generate Sertifikat Advanced**
--   **Bulk Generation:** Upload file `.xlsx` atau `.csv` untuk membuat sertifikat secara massal.
+-   **Dual Source Generation:** Generate dari file upload ATAU database karyawan.
 -   **Custom Certificate Numbers:** Input manual prefix nomor sertifikat dengan auto-increment cerdas.
 -   **High Quality PDF:** Menggunakan Browsershot untuk menghasilkan PDF berkualitas tinggi (2x resolution).
 -   **Signature Integration:** Support hingga 3 penandatangan dengan upload gambar signature.
+-   **Nilai Support:** Kolom opsional untuk nilai (@{{nilai_1}}, @{{nilai_2}}, @{{nilai_3}}, @{{nilai_4}}).
 
 ### 🎯 **Fitur Signature & Placeholder**
 -   **Dynamic Signatures:** Pilih 1-3 penandatangan dengan nama, jabatan, dan gambar tanda tangan.
@@ -111,11 +121,17 @@ Untuk menjalankan proyek ini di lingkungan lokal (misalnya menggunakan XAMPP), i
         DB_PASSWORD=
         ```
 
-6.  **Jalankan Migrasi**
+6.  **Jalankan Migrasi & Seeder**
     Perintah ini akan membuat semua tabel yang dibutuhkan di database Anda.
     ```bash
     php artisan migrate
     ```
+    
+    Untuk menambahkan data sample karyawan (opsional):
+    ```bash
+    php artisan db:seed --class=KaryawanSeeder
+    ```
+    Ini akan menambahkan 25 data karyawan sample dari 5 divisi yang berbeda.
 
 7.  **Setup Queue Worker (Opsional untuk Development)**
     Untuk development, Anda bisa menjalankan queue worker di terminal terpisah:
@@ -169,14 +185,55 @@ Untuk menjalankan proyek ini di lingkungan lokal (misalnya menggunakan XAMPP), i
     -   Pilih jumlah penandatangan (1-3).
     -   Isi nama, jabatan, dan upload gambar tanda tangan (PNG).
 
-3.  **Upload Data Peserta:**
+3.  **Pilih Sumber Data:**
+    
+    **Opsi A - Upload File:**
+    -   Pilih radio button "Upload File Excel/CSV".
     -   Upload file Excel/CSV dengan kolom: `nama`, `email`, `peran`, `id_peserta`, `divisi`.
+    -   Kolom opsional: `nilai_1`, `nilai_2`, `nilai_3`, `nilai_4`.
+    
+    **Opsi B - Database Karyawan:**
+    -   Pilih radio button "Pilih dari Database".
+    -   **Search:** Gunakan field pencarian untuk cari nama/NPK karyawan.
+    -   **Filter:** Pilih divisi dari dropdown untuk filter berdasarkan divisi.
+    -   **Select Individual:** Centang checkbox untuk pilih karyawan satu per satu.
+    -   **Select All:** Klik "Pilih Semua" untuk memilih SEMUA karyawan di seluruh halaman (sesuai search/filter).
+    -   **Cross-page Selection:** Pilihan tetap terjaga saat pindah halaman.
+    -   **CRUD Karyawan:** Gunakan tombol "Tambah Karyawan" atau ikon edit/delete untuk mengelola data.
 
 4.  **Muat Template:** Pilih template yang sudah dibuat dari tabel template.
 
 5.  **Preview:** Klik "Preview" untuk melihat contoh sertifikat.
 
 6.  **Generate:** Klik "Generate & Download ZIP" dan tunggu progress bar.
+
+### 👥 **Mengelola Data Karyawan**
+
+Ketika memilih sumber data database, Anda dapat:
+
+1.  **Tambah Karyawan:**
+    -   Klik tombol "Tambah Karyawan".
+    -   Isi nama lengkap, NPK/ID, dan divisi.
+    -   Klik "Simpan" - data akan tersimpan tanpa reload halaman.
+
+2.  **Edit Karyawan:**
+    -   Klik ikon pensil (edit) pada karyawan yang ingin diedit.
+    -   Ubah data yang diperlukan dan klik "Simpan".
+
+3.  **Hapus Karyawan:**
+    -   Klik ikon trash (hapus) dan konfirmasi penghapusan.
+
+4.  **Search & Filter:**
+    -   **Search:** Ketik nama atau NPK di field pencarian, tekan Enter atau klik "Cari".
+    -   **Filter Divisi:** Pilih divisi dari dropdown untuk filter data.
+    -   **Reset:** Klik "Reset" untuk membersihkan search dan filter.
+    -   **Real-time:** Semua operasi search/filter tanpa reload halaman.
+
+5.  **Bulk Selection Features:**
+    -   **Pilih Semua di Halaman:** Centang checkbox header untuk pilih semua di halaman aktif.
+    -   **Pilih Semua Data:** Klik tombol "Pilih Semua" untuk memilih SEMUA karyawan sesuai filter.
+    -   **Batal Semua:** Klik "Batal Semua" untuk menghapus semua pilihan.
+    -   **State Management:** Pilihan tetap terjaga saat navigasi pagination.
 
 ### 📋 **Mengelola Hasil**
 
@@ -194,13 +251,40 @@ Untuk menjalankan proyek ini di lingkungan lokal (misalnya menggunakan XAMPP), i
 
 ## Struktur File Data Peserta
 
+### Format File Excel/CSV
+
 File Excel/CSV harus memiliki struktur kolom sebagai berikut:
 
-| Kolom A | Kolom B | Kolom C | Kolom D | Kolom E |
-|---------|---------|---------|---------|---------|
-| nama    | email   | peran   | id_peserta | divisi |
-| John Doe | john@email.com | Peserta | ID001 | IT |
-| Jane Smith | jane@email.com | Panitia | ID002 | Marketing |
+| Kolom A | Kolom B | Kolom C | Kolom D | Kolom E | Kolom F | Kolom G | Kolom H | Kolom I |
+|---------|---------|---------|---------|---------|---------|---------|---------|---------|
+| nama    | email   | peran   | id_peserta | divisi | nilai_1 | nilai_2 | nilai_3 | nilai_4 |
+| John Doe | john@email.com | Peserta | ID001 | IT | 85 | 90 | 88 | 92 |
+| Jane Smith | jane@email.com | Panitia | ID002 | Marketing | 78 | 85 | 80 | 87 |
+
+**Kolom Wajib:**
+- `nama`, `email`, `peran`, `id_peserta`, `divisi`
+
+**Kolom Opsional:**
+- `nilai_1`, `nilai_2`, `nilai_3`, `nilai_4` (untuk sertifikat dengan nilai/score)
+
+### Format Database Karyawan
+
+Tabel karyawan di database memiliki struktur:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | Primary Key | Auto increment ID |
+| nama | String | Nama lengkap karyawan |
+| npk_id | String (Unique) | NPK/ID karyawan |
+| divisi | String | Divisi/departemen |
+| created_at | Timestamp | Waktu dibuat |
+| updated_at | Timestamp | Waktu diupdate |
+
+**Catatan:** Untuk sumber data database, sistem akan otomatis menggunakan:
+- `nama` sebagai nama penerima
+- `npk_id` sebagai ID peserta  
+- `divisi` sebagai divisi
+- Email dan peran akan menggunakan default value
 
 ## Placeholder yang Tersedia
 
@@ -227,6 +311,9 @@ Template mendukung placeholder berikut:
 -   `@{{nama_penandatangan_1}}`, `@{{nama_penandatangan_2}}`, `@{{nama_penandatangan_3}}`
 -   `@{{jabatan_penandatangan_1}}`, `@{{jabatan_penandatangan_2}}`, `@{{jabatan_penandatangan_3}}`
 
+### Nilai/Score (dari file Excel/CSV)
+-   `@{{nilai_1}}`, `@{{nilai_2}}`, `@{{nilai_3}}`, `@{{nilai_4}}` - Untuk sertifikat dengan penilaian
+
 ## Troubleshooting
 
 ### 🔧 **Masalah Umum**
@@ -246,6 +333,12 @@ Template mendukung placeholder berikut:
     -   Restart Apache/Nginx setelah mengubah konfigurasi PHP.
     -   Gunakan browser berbeda (hindari Internet Download Manager).
 
+-   **Database Karyawan Issues:**
+    -   **AJAX Loading Error:** Periksa koneksi database dan route `/karyawan/ajax`.
+    -   **Search Tidak Berfungsi:** Pastikan model Karyawan memiliki scope `search` dan `divisi`.
+    -   **CRUD Gagal:** Periksa validasi NPK unique dan pastikan semua field required diisi.
+    -   **State Management:** Refresh halaman jika checkbox selection tidak terjaga.
+
 -   **Gambar Signature Tidak Muncul:**
     -   Pastikan file gambar berformat PNG.
     -   Periksa ukuran file tidak terlalu besar (< 2MB).
@@ -255,6 +348,7 @@ Template mendukung placeholder berikut:
     -   Jalankan `php artisan migrate` untuk memastikan tabel terbaru.
     -   Jalankan `composer dump-autoload` jika ada error class not found.
     -   Periksa koneksi database di file `.env`.
+    -   Untuk reset data karyawan: `php artisan migrate:fresh --seed`
 
 ### ⚠️ **Peringatan Penting: Duplikasi Nomor Sertifikat**
 
@@ -327,7 +421,18 @@ Kontribusi sangat diterima! Silakan:
 
 ## Changelog
 
-### v2.0.0 (Latest)
+### v3.0.0 (Latest) - Database Integration & AJAX Enhancement
+-   ✅ **Dual Data Source:** File upload DAN database karyawan
+-   ✅ **Database Karyawan Management:** CRUD lengkap dengan validasi
+-   ✅ **AJAX Interface:** Semua operasi tanpa reload halaman
+-   ✅ **Smart Search & Filter:** Real-time search nama/NPK dan filter divisi
+-   ✅ **Cross-page Selection:** State management untuk pilihan di seluruh halaman
+-   ✅ **Bulk Selection Enhancement:** "Pilih Semua" berlaku untuk semua data, bukan hanya halaman aktif
+-   ✅ **Responsive Pagination:** Navigasi halaman dengan data state yang terjaga
+-   ✅ **Enhanced UX:** Loading indicators, error handling, dan feedback visual
+-   ✅ **Sample Data:** Seeder dengan 25 data karyawan dari 5 divisi
+
+### v2.0.0
 -   ✅ Dynamic template editor dengan Fabric.js
 -   ✅ Queue system untuk performa optimal
 -   ✅ Auto-download ZIP files
@@ -336,6 +441,7 @@ Kontribusi sangat diterima! Silakan:
 -   ✅ High-quality PDF dengan Browsershot
 -   ✅ Signature positioning system
 -   ✅ Dual dashboard tables (batch + individual)
+-   ✅ Nilai/score support dengan placeholder
 
 ### v1.0.0
 -   ✅ Basic bulk certificate generation

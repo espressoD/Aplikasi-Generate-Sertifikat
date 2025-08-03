@@ -27,6 +27,13 @@ Route::post('/generate-bulk/preview', [BulkController::class, 'preview'])->name(
 Route::post('/generate-bulk/download', [BulkController::class, 'storeAndDownloadZip'])->name('certificates.bulk.download');
 Route::post('/certificates/render-preview', [BulkController::class, 'renderForPreview'])->name('certificates.render.preview');
 
+// Karyawan CRUD
+Route::post('/karyawan', [BulkController::class, 'storeKaryawan'])->name('karyawan.store');
+Route::put('/karyawan/{id}', [BulkController::class, 'updateKaryawan'])->name('karyawan.update');
+Route::delete('/karyawan/{id}', [BulkController::class, 'deleteKaryawan'])->name('karyawan.delete');
+Route::get('/karyawan/ajax', [BulkController::class, 'getKaryawanAjax'])->name('karyawan.ajax'); // AJAX endpoint
+Route::get('/karyawan/ajax/all-ids', [BulkController::class, 'getAllKaryawanIds'])->name('karyawan.ajax.all-ids'); // Get all IDs for select all
+
 // Sertifikat per Individu
 Route::get('/certificate/{certificate}/show', [CertificateController::class, 'show'])->name('certificates.show');
 Route::get('/certificate/{certificate}/download', [CertificateController::class, 'download'])->name('certificates.download');

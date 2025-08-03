@@ -8,6 +8,7 @@ use Carbon\Carbon;
 use Maatwebsite\Excel\Facades\Excel;
 use App\Certificate;
 use App\CertificateTemplate;
+use App\Karyawan;
 use Illuminate\Support\Facades\File;
 use ZipArchive;
 use Illuminate\Support\Facades\Log;
@@ -22,13 +23,26 @@ use Illuminate\Support\Facades\Cache;
 
 class BulkController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         // Ambil semua template dari database, diurutkan berdasarkan nama
         $templates = CertificateTemplate::orderBy('name', 'asc')->get()->keyBy('id');
 
-        // Kirim data template ke view
-        return view('generate-bulk', compact('templates'));
+        // Ambil data karyawan dengan pagination dan search
+        $search = $request->get('search');
+        $divisiFilter = $request->get('divisi_filter');
+        
+        $karyawan = Karyawan::search($search)
+            ->divisi($divisiFilter)
+            ->orderBy('nama')
+            ->paginate(10)
+            ->appends(['search' => $search, 'divisi_filter' => $divisiFilter]);
+        
+        // Ambil daftar divisi untuk filter dropdown
+        $divisiList = Karyawan::distinct()->pluck('divisi')->sort();
+
+        // Kirim data ke view
+        return view('generate-bulk', compact('templates', 'karyawan', 'divisiList', 'search', 'divisiFilter'));
     }
 
     public function renderForPreview(Request $request)
@@ -86,7 +100,9 @@ class BulkController extends Controller
                 'signing_place' => 'required|string|max:100',
                 'certificate_number_prefix' => 'required|string|max:50',
                 'template_json' => 'required|json',
-                'participant_file' => 'required|file|mimes:csv,xlsx,txt',
+                'data_source' => 'required|in:file,database',
+                'participant_file' => 'required_if:data_source,file|file|mimes:csv,xlsx,txt',
+                'selected_karyawan' => 'required_if:data_source,database|array|min:1',
             ]);
 
             $batchId = uniqid();
@@ -103,12 +119,34 @@ class BulkController extends Controller
                     $signaturesPaths[$key] = storage_path('app/' . $path);
                 }
             }
-            $participants = Excel::toCollection(null, $request->file('participant_file'))[0];
+
+            // Prepare participants based on data source
+            $participants = [];
+            if ($request->data_source === 'file') {
+                $participants = Excel::toCollection(null, $request->file('participant_file'))[0];
+            } else {
+                // From database
+                $selectedKaryawan = Karyawan::whereIn('id', $request->selected_karyawan)->get();
+                foreach ($selectedKaryawan as $karyawan) {
+                    $participants[] = [
+                        $karyawan->nama,
+                        '', // email - empty for database source
+                        'Peserta', // default role
+                        $karyawan->npk_id,
+                        $karyawan->divisi,
+                        '-', // nilai_1
+                        '-', // nilai_2  
+                        '-', // nilai_3
+                        '-', // nilai_4
+                    ];
+                }
+            }
 
             $jobCount = 0;
             $counter = 1;
             foreach ($participants as $key => $participant) {
-                if ($key === 0) continue;
+                // Skip header row only for file source
+                if ($request->data_source === 'file' && $key === 0) continue;
 
                 $recipientName = trim($participant[0] ?? '');
                 if (!$recipientName) continue;
@@ -296,5 +334,107 @@ class BulkController extends Controller
             'certificateNumber' => $certificateNumber,
             'certificate_number' => $certificateNumber, // Add both for compatibility
         ];
+    }
+
+    /**
+     * Store new karyawan
+     */
+    public function storeKaryawan(Request $request)
+    {
+        $request->validate([
+            'nama' => 'required|string|max:255',
+            'npk_id' => 'required|string|max:50|unique:karyawan,npk_id',
+            'divisi' => 'required|string|max:100',
+        ]);
+
+        Karyawan::create($request->only(['nama', 'npk_id', 'divisi']));
+
+        return response()->json(['success' => true, 'message' => 'Karyawan berhasil ditambahkan']);
+    }
+
+    /**
+     * Update karyawan
+     */
+    public function updateKaryawan(Request $request, $id)
+    {
+        $karyawan = Karyawan::findOrFail($id);
+        
+        $request->validate([
+            'nama' => 'required|string|max:255',
+            'npk_id' => 'required|string|max:50|unique:karyawan,npk_id,' . $id,
+            'divisi' => 'required|string|max:100',
+        ]);
+
+        $karyawan->update($request->only(['nama', 'npk_id', 'divisi']));
+
+        return response()->json(['success' => true, 'message' => 'Karyawan berhasil diupdate']);
+    }
+
+    /**
+     * Delete karyawan
+     */
+    public function deleteKaryawan($id)
+    {
+        $karyawan = Karyawan::findOrFail($id);
+        $karyawan->delete();
+
+        return response()->json(['success' => true, 'message' => 'Karyawan berhasil dihapus']);
+    }
+
+    /**
+     * Get karyawan data via AJAX
+     */
+    public function getKaryawanAjax(Request $request)
+    {
+        $search = $request->get('search');
+        $divisiFilter = $request->get('divisi_filter');
+        $page = $request->get('page', 1);
+        
+        $karyawan = Karyawan::search($search)
+            ->divisi($divisiFilter)
+            ->orderBy('nama')
+            ->paginate(10, ['*'], 'page', $page)
+            ->appends(['search' => $search, 'divisi_filter' => $divisiFilter]);
+        
+        // Ambil daftar divisi untuk filter dropdown
+        $divisiList = Karyawan::distinct()->pluck('divisi')->sort();
+
+        return response()->json([
+            'success' => true,
+            'data' => $karyawan->items(),
+            'pagination' => [
+                'current_page' => $karyawan->currentPage(),
+                'last_page' => $karyawan->lastPage(),
+                'per_page' => $karyawan->perPage(),
+                'total' => $karyawan->total(),
+                'from' => $karyawan->firstItem(),
+                'to' => $karyawan->lastItem(),
+                'has_pages' => $karyawan->hasPages(),
+                'prev_page' => $karyawan->previousPageUrl(),
+                'next_page' => $karyawan->nextPageUrl(),
+            ],
+            'divisiList' => $divisiList,
+            'search' => $search,
+            'divisiFilter' => $divisiFilter
+        ]);
+    }
+
+    /**
+     * Get all karyawan IDs based on search/filter for "select all" functionality
+     */
+    public function getAllKaryawanIds(Request $request)
+    {
+        $search = $request->get('search');
+        $divisiFilter = $request->get('divisi_filter');
+        
+        $ids = Karyawan::search($search)
+            ->divisi($divisiFilter)
+            ->orderBy('nama')
+            ->pluck('id');
+
+        return response()->json([
+            'success' => true,
+            'ids' => $ids
+        ]);
     }
 }

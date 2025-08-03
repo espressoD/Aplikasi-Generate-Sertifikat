@@ -88,13 +88,157 @@
                         <input type="text" class="form-control mb-2" name="descriptions[1]" placeholder="Deskripsi Kustom 2 (untuk placeholder @{{deskripsi_2}})">
                         <input type="text" class="form-control" name="descriptions[2]" placeholder="Deskripsi Kustom 3 (untuk placeholder @{{deskripsi_3}})">
                     </div>
+                    
+                    <hr>
+                    <h4>Sumber Data Peserta</h4>
+                    
+                    {{-- Data Source Selection --}}
                     <div class="form-group">
-                        <label for="participant_file">File Data Peserta (.csv, .xlsx)</label>
-                        <div class="input-group"><div class="custom-file"><input type="file" class="custom-file-input" id="participant_file" name="participant_file" required><label class="custom-file-label" for="participant_file">Pilih file</label></div></div>
-                        <small class="form-text text-muted">
-                            Struktur kolom wajib: `nama`, `email`, `peran`, `id_peserta`, `divisi`.<br>
-                            Kolom opsional untuk nilai: `nilai_1`, `nilai_2`, `nilai_3`, `nilai_4`.
-                        </small>
+                        <label>Pilih Sumber Data</label>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="custom-control custom-radio">
+                                    <input class="custom-control-input" type="radio" id="data_source_file" name="data_source" value="file" checked>
+                                    <label class="custom-control-label" for="data_source_file">
+                                        <i class="fas fa-file-excel text-success"></i> Upload File Excel/CSV
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="custom-control custom-radio">
+                                    <input class="custom-control-input" type="radio" id="data_source_database" name="data_source" value="database">
+                                    <label class="custom-control-label" for="data_source_database">
+                                        <i class="fas fa-database text-primary"></i> Pilih dari Database
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- Database Section --}}
+                    <div id="database-section" style="display: none;">
+                        <div class="card card-outline card-info">
+                            <div class="card-header">
+                                <h3 class="card-title">Data Karyawan</h3>
+                                <div class="card-tools">
+                                    <button type="button" class="btn btn-success btn-sm" id="add-karyawan-btn">
+                                        <i class="fas fa-plus"></i> Tambah Karyawan
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                {{-- Search and Filter --}}
+                                <div class="row mb-3">
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control" id="search-karyawan" placeholder="Cari nama/NPK..." value="{{ $search }}">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <select class="form-control" id="filter-divisi">
+                                            <option value="">Semua Divisi</option>
+                                            @foreach($divisiList as $divisi)
+                                                <option value="{{ $divisi }}" {{ $divisiFilter == $divisi ? 'selected' : '' }}>{{ $divisi }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <button type="button" class="btn btn-primary" id="search-btn">
+                                            <i class="fas fa-search"></i> Cari
+                                        </button>
+                                        <button type="button" class="btn btn-secondary" id="reset-search">
+                                            <i class="fas fa-refresh"></i> Reset
+                                        </button>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="btn-group w-100">
+                                            <button type="button" class="btn btn-info btn-sm" id="select-all-karyawan">
+                                                <i class="fas fa-check-square"></i> Pilih Semua
+                                            </button>
+                                            <button type="button" class="btn btn-warning btn-sm" id="select-none-karyawan">
+                                                <i class="fas fa-square"></i> Batal Semua
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {{-- Karyawan Table --}}
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th width="40px">
+                                                    <input type="checkbox" id="check-all-karyawan">
+                                                </th>
+                                                <th>Nama</th>
+                                                <th>NPK/ID</th>
+                                                <th>Divisi</th>
+                                                <th width="100px">Aksi</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="karyawan-table-body">
+                                            @foreach($karyawan as $k)
+                                                <tr>
+                                                    <td>
+                                                        <input type="checkbox" name="selected_karyawan[]" value="{{ $k->id }}" class="karyawan-checkbox">
+                                                    </td>
+                                                    <td>{{ $k->nama }}</td>
+                                                    <td>{{ $k->npk_id }}</td>
+                                                    <td>{{ $k->divisi }}</td>
+                                                    <td>
+                                                        <button type="button" class="btn btn-xs btn-warning edit-karyawan-btn" 
+                                                                data-id="{{ $k->id }}" 
+                                                                data-nama="{{ $k->nama }}" 
+                                                                data-npk="{{ $k->npk_id }}" 
+                                                                data-divisi="{{ $k->divisi }}">
+                                                            <i class="fas fa-edit"></i>
+                                                        </button>
+                                                        <button type="button" class="btn btn-xs btn-danger delete-karyawan-btn" data-id="{{ $k->id }}">
+                                                            <i class="fas fa-trash"></i>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {{-- Pagination --}}
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <small class="text-muted" id="karyawan-stats">
+                                            Menampilkan {{ $karyawan->firstItem() ?? 0 }} - {{ $karyawan->lastItem() ?? 0 }} 
+                                            dari {{ $karyawan->total() }} data
+                                        </small>
+                                    </div>
+                                    <div>
+                                        <nav>
+                                            <ul class="pagination pagination-sm karyawan-pagination" id="karyawan-pagination">
+                                                {{ $karyawan->links() }}
+                                            </ul>
+                                        </nav>
+                                    </div>
+                                </div>
+
+                                {{-- Selected Count --}}
+                                <div class="mt-2">
+                                    <div class="alert alert-info" id="selected-info" style="display: none;">
+                                        <i class="fas fa-info-circle"></i> 
+                                        <span id="selected-count">0</span> karyawan dipilih untuk generate sertifikat
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- File Upload Section --}}
+                    <div id="file-section">
+                        <div class="form-group">
+                            <label for="participant_file">File Data Peserta (.csv, .xlsx)</label>
+                            <div class="input-group"><div class="custom-file"><input type="file" class="custom-file-input" id="participant_file" name="participant_file"><label class="custom-file-label" for="participant_file">Pilih file</label></div></div>
+                            <small class="form-text text-muted">
+                                Struktur kolom wajib: `nama`, `email`, `peran`, `id_peserta`, `divisi`.<br>
+                                Kolom opsional untuk nilai: `nilai_1`, `nilai_2`, `nilai_3`, `nilai_4`.
+                            </small>
+                        </div>
                     </div>
                     <hr>
                     <h4>Pengaturan Tanda Tangan</h4>
@@ -206,12 +350,69 @@
     </div>
 </div>
 
+{{-- Modal Tambah/Edit Karyawan --}}
+<div class="modal fade" id="karyawan-modal" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="karyawan-modal-title">Tambah Karyawan</h4>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <form id="karyawan-form">
+                <div class="modal-body">
+                    <input type="hidden" id="karyawan-id">
+                    <div class="form-group">
+                        <label for="karyawan-nama">Nama Lengkap</label>
+                        <input type="text" class="form-control" id="karyawan-nama" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="karyawan-npk">NPK/ID</label>
+                        <input type="text" class="form-control" id="karyawan-npk" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="karyawan-divisi">Divisi</label>
+                        <input type="text" class="form-control" id="karyawan-divisi" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-primary" id="save-karyawan-btn">Simpan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 
 @endsection
 
 
 @push('scripts')
 <script src="{{ asset('js/fabric.min.js') }}"></script>
+<style>
+    .karyawan-pagination .page-link {
+        cursor: pointer;
+    }
+    
+    .karyawan-pagination .disabled .page-link {
+        cursor: not-allowed;
+    }
+    
+    #karyawan-table-body tr td {
+        vertical-align: middle;
+    }
+    
+    .fa-spinner.fa-spin {
+        animation: fa-spin 2s infinite linear;
+    }
+    
+    @keyframes fa-spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(359deg); }
+    }
+</style>
 <script>
     $(document).ready(function() {
         const canvas = window.canvas=new fabric.Canvas('certificate-canvas', {
@@ -219,6 +420,9 @@
             height: 794, // A4 landscape height: 21cm at 96 DPI
             backgroundColor: '#ffffff'
         });
+
+        // Global state untuk menyimpan checkbox yang dipilih di semua halaman
+        window.selectedKaryawanIds = new Set();
 
         // ========== 1. === EDITOR & PLACEHOLDER ==========
         initCanvasEvents(canvas);
@@ -234,8 +438,10 @@
         $('#preview-btn').on('click', () => handlePreview(canvas));
         $('#generate-btn-final').on('click', () => handleGenerate(canvas));
 
-        // ========== 4. === INPUT HANDLERS (Signatures, Tanggal) ==========
+        // ========== 4. === INPUT HANDLERS (Signatures, Tanggal, Database) ==========
         bindFormInputHandlers();
+        bindDatabaseHandlers();
+        bindKaryawanCRUD();
     });
 
 
@@ -417,6 +623,424 @@
         }).trigger('change');
     }
 
+    // ========== DATABASE HANDLERS ==========
+    function bindDatabaseHandlers() {
+        // Toggle between file and database source
+        $('input[name="data_source"]').on('change', function() {
+            const source = $(this).val();
+            if (source === 'database') {
+                $('#database-section').show();
+                $('#file-section').hide();
+                $('#participant_file').prop('required', false);
+                
+                // Reset state ketika switch ke database
+                window.selectedKaryawanIds.clear();
+                updateSelectedCount();
+                
+                loadKaryawanData(); // Load initial data
+            } else {
+                $('#database-section').hide();
+                $('#file-section').show();
+                $('#participant_file').prop('required', true);
+                
+                // Clear state ketika switch ke file
+                window.selectedKaryawanIds.clear();
+                updateSelectedCount();
+            }
+        });
+
+        // Search and filter - AJAX version
+        $('#search-btn').on('click', function() {
+            loadKaryawanData();
+        });
+
+        $('#reset-search').on('click', function() {
+            $('#search-karyawan').val('');
+            $('#filter-divisi').val('');
+            loadKaryawanData();
+        });
+
+        // Enter key for search
+        $('#search-karyawan').on('keypress', function(e) {
+            if (e.which === 13) {
+                loadKaryawanData();
+            }
+        });
+
+        // Filter change
+        $('#filter-divisi').on('change', function() {
+            loadKaryawanData();
+        });
+
+        // Select all/none functionality
+        $('#check-all-karyawan').on('change', function() {
+            const isChecked = $(this).is(':checked');
+            $('.karyawan-checkbox').each(function() {
+                const karyawanId = $(this).val();
+                $(this).prop('checked', isChecked);
+                
+                if (isChecked) {
+                    window.selectedKaryawanIds.add(karyawanId);
+                } else {
+                    window.selectedKaryawanIds.delete(karyawanId);
+                }
+            });
+            updateSelectedCount();
+        });
+
+        $('#select-all-karyawan').on('click', function() {
+            // Pilih semua data di semua halaman
+            selectAllKaryawan();
+        });
+
+        $('#select-none-karyawan').on('click', function() {
+            // Batal semua pilihan
+            window.selectedKaryawanIds.clear();
+            $('.karyawan-checkbox').prop('checked', false);
+            $('#check-all-karyawan').prop('checked', false);
+            updateSelectedCount();
+        });
+
+        // Individual checkbox change
+        $(document).on('change', '.karyawan-checkbox', function() {
+            const karyawanId = $(this).val();
+            const isChecked = $(this).is(':checked');
+            
+            if (isChecked) {
+                window.selectedKaryawanIds.add(karyawanId);
+            } else {
+                window.selectedKaryawanIds.delete(karyawanId);
+            }
+            
+            updateSelectedCount();
+            updateSelectAllCheckbox();
+        });
+
+        // Pagination click handler
+        $(document).on('click', '.karyawan-pagination a', function(e) {
+            e.preventDefault();
+            const url = $(this).attr('href');
+            if (url && !$(this).parent().hasClass('disabled')) {
+                const urlParams = new URLSearchParams(url.split('?')[1]);
+                const page = urlParams.get('page');
+                loadKaryawanData(page);
+            }
+        });
+    }
+
+    // Function to load karyawan data via AJAX
+    function loadKaryawanData(page = 1) {
+        const search = $('#search-karyawan').val();
+        const divisiFilter = $('#filter-divisi').val();
+
+        // Show loading state
+        const tableBody = $('#karyawan-table-body');
+        tableBody.html('<tr><td colspan="5" class="text-center"><i class="fas fa-spinner fa-spin"></i> Memuat data...</td></tr>');
+
+        $.ajax({
+            url: '/karyawan/ajax',
+            method: 'GET',
+            data: {
+                search: search,
+                divisi_filter: divisiFilter,
+                page: page
+            },
+            success: function(response) {
+                if (response.success) {
+                    updateKaryawanTable(response.data);
+                    updatePagination(response.pagination);
+                    updateStatistics(response.pagination);
+                    updateDivisiFilter(response.divisiList, response.divisiFilter);
+                }
+            },
+            error: function(xhr) {
+                console.error('Error loading karyawan data:', xhr);
+                tableBody.html('<tr><td colspan="5" class="text-center text-danger">Gagal memuat data</td></tr>');
+            }
+        });
+    }
+
+    // Function to update table content
+    function updateKaryawanTable(data) {
+        const tableBody = $('#karyawan-table-body');
+        let html = '';
+        
+        if (data.length === 0) {
+            html = '<tr><td colspan="5" class="text-center">Tidak ada data yang ditemukan</td></tr>';
+        } else {
+            data.forEach(function(karyawan) {
+                const isSelected = window.selectedKaryawanIds.has(karyawan.id.toString());
+                const checkedAttr = isSelected ? 'checked' : '';
+                
+                html += `
+                    <tr>
+                        <td>
+                            <input type="checkbox" name="selected_karyawan[]" value="${karyawan.id}" class="karyawan-checkbox" ${checkedAttr}>
+                        </td>
+                        <td>${karyawan.nama}</td>
+                        <td>${karyawan.npk_id}</td>
+                        <td>${karyawan.divisi}</td>
+                        <td>
+                            <button type="button" class="btn btn-xs btn-warning edit-karyawan-btn" 
+                                    data-id="${karyawan.id}" 
+                                    data-nama="${karyawan.nama}" 
+                                    data-npk="${karyawan.npk_id}" 
+                                    data-divisi="${karyawan.divisi}">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button type="button" class="btn btn-xs btn-danger delete-karyawan-btn" data-id="${karyawan.id}">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+        
+        tableBody.html(html);
+        
+        // Update checkbox "select all" berdasarkan state saat ini
+        updateSelectAllCheckbox();
+        updateSelectedCount();
+    }
+
+    // Function to update pagination
+    function updatePagination(pagination) {
+        const paginationContainer = $('#karyawan-pagination');
+        let html = '';
+        
+        if (pagination.has_pages) {
+            // Previous button
+            if (pagination.current_page > 1) {
+                html += `<li class="page-item"><a class="page-link" href="?page=${pagination.current_page - 1}">‹</a></li>`;
+            } else {
+                html += `<li class="page-item disabled"><span class="page-link">‹</span></li>`;
+            }
+            
+            // Page numbers
+            const start = Math.max(1, pagination.current_page - 2);
+            const end = Math.min(pagination.last_page, pagination.current_page + 2);
+            
+            if (start > 1) {
+                html += `<li class="page-item"><a class="page-link" href="?page=1">1</a></li>`;
+                if (start > 2) {
+                    html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+                }
+            }
+            
+            for (let i = start; i <= end; i++) {
+                if (i === pagination.current_page) {
+                    html += `<li class="page-item active"><span class="page-link">${i}</span></li>`;
+                } else {
+                    html += `<li class="page-item"><a class="page-link" href="?page=${i}">${i}</a></li>`;
+                }
+            }
+            
+            if (end < pagination.last_page) {
+                if (end < pagination.last_page - 1) {
+                    html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+                }
+                html += `<li class="page-item"><a class="page-link" href="?page=${pagination.last_page}">${pagination.last_page}</a></li>`;
+            }
+            
+            // Next button
+            if (pagination.current_page < pagination.last_page) {
+                html += `<li class="page-item"><a class="page-link" href="?page=${pagination.current_page + 1}">›</a></li>`;
+            } else {
+                html += `<li class="page-item disabled"><span class="page-link">›</span></li>`;
+            }
+        }
+        
+        paginationContainer.html(html);
+    }
+
+    // Function to update statistics
+    function updateStatistics(pagination) {
+        const statsText = pagination.total > 0 
+            ? `Menampilkan ${pagination.from} - ${pagination.to} dari ${pagination.total} data`
+            : 'Tidak ada data';
+        $('#karyawan-stats').text(statsText);
+    }
+
+    // Function to update divisi filter options
+    function updateDivisiFilter(divisiList, selectedDivisi) {
+        const select = $('#filter-divisi');
+        const currentValue = selectedDivisi || select.val();
+        
+        let html = '<option value="">Semua Divisi</option>';
+        divisiList.forEach(function(divisi) {
+            const selected = divisi === currentValue ? 'selected' : '';
+            html += `<option value="${divisi}" ${selected}>${divisi}</option>`;
+        });
+        
+        select.html(html);
+    }
+
+    function updateSelectedCount() {
+        const count = window.selectedKaryawanIds.size;
+        $('#selected-count').text(count);
+        if (count > 0) {
+            $('#selected-info').show();
+        } else {
+            $('#selected-info').hide();
+        }
+    }
+
+    // Function untuk update checkbox "select all" 
+    function updateSelectAllCheckbox() {
+        const totalCheckboxes = $('.karyawan-checkbox').length;
+        const checkedCheckboxes = $('.karyawan-checkbox:checked').length;
+        
+        if (totalCheckboxes === 0) {
+            $('#check-all-karyawan').prop('checked', false);
+        } else if (checkedCheckboxes === totalCheckboxes) {
+            $('#check-all-karyawan').prop('checked', true);
+        } else {
+            $('#check-all-karyawan').prop('checked', false);
+        }
+    }
+
+    // Function untuk select all data di semua halaman
+    function selectAllKaryawan() {
+        const search = $('#search-karyawan').val();
+        const divisiFilter = $('#filter-divisi').val();
+
+        // Show loading untuk feedback
+        $('#select-all-karyawan').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Loading...');
+
+        $.ajax({
+            url: '/karyawan/ajax/all-ids',
+            method: 'GET',
+            data: {
+                search: search,
+                divisi_filter: divisiFilter
+            },
+            success: function(response) {
+                if (response.success) {
+                    // Add all IDs to selected set
+                    response.ids.forEach(function(id) {
+                        window.selectedKaryawanIds.add(id.toString());
+                    });
+                    
+                    // Update current page checkboxes
+                    $('.karyawan-checkbox').prop('checked', true);
+                    $('#check-all-karyawan').prop('checked', true);
+                    updateSelectedCount();
+                    
+                    //alert(`${response.ids.length} karyawan telah dipilih dari semua halaman`);
+                }
+            },
+            error: function(xhr) {
+                console.error('Error selecting all karyawan:', xhr);
+                alert('Gagal memilih semua data');
+            },
+            complete: function() {
+                $('#select-all-karyawan').prop('disabled', false).html('<i class="fas fa-check-square"></i> Pilih Semua');
+            }
+        });
+    }
+
+    // ========== KARYAWAN CRUD ==========
+    function bindKaryawanCRUD() {
+        // Add new karyawan
+        $('#add-karyawan-btn').on('click', function() {
+            $('#karyawan-modal-title').text('Tambah Karyawan');
+            $('#karyawan-form')[0].reset();
+            $('#karyawan-id').val('');
+            $('#karyawan-modal').modal('show');
+        });
+
+        // Edit karyawan
+        $(document).on('click', '.edit-karyawan-btn', function() {
+            const id = $(this).data('id');
+            const nama = $(this).data('nama');
+            const npk = $(this).data('npk');
+            const divisi = $(this).data('divisi');
+
+            $('#karyawan-modal-title').text('Edit Karyawan');
+            $('#karyawan-id').val(id);
+            $('#karyawan-nama').val(nama);
+            $('#karyawan-npk').val(npk);
+            $('#karyawan-divisi').val(divisi);
+            $('#karyawan-modal').modal('show');
+        });
+
+        // Save karyawan
+        $('#karyawan-form').on('submit', function(e) {
+            e.preventDefault();
+            const id = $('#karyawan-id').val();
+            const isEdit = id !== '';
+            const url = isEdit ? `/karyawan/${id}` : '/karyawan';
+            const method = isEdit ? 'PUT' : 'POST';
+
+            const data = {
+                nama: $('#karyawan-nama').val(),
+                npk_id: $('#karyawan-npk').val(),
+                divisi: $('#karyawan-divisi').val(),
+                _token: '{{ csrf_token() }}'
+            };
+
+            if (isEdit) {
+                data._method = 'PUT';
+            }
+
+            // Disable submit button
+            $('#save-karyawan-btn').prop('disabled', true).text('Menyimpan...');
+
+            $.ajax({
+                url: url,
+                method: 'POST',
+                data: data,
+                success: function(response) {
+                    if (response.success) {
+                        alert(response.message);
+                        $('#karyawan-modal').modal('hide');
+                        loadKaryawanData(); // Reload table via AJAX
+                    }
+                },
+                error: function(xhr) {
+                    const errors = xhr.responseJSON?.errors;
+                    if (errors) {
+                        let errorMsg = 'Validation errors:\n';
+                        Object.keys(errors).forEach(key => {
+                            errorMsg += `- ${errors[key][0]}\n`;
+                        });
+                        alert(errorMsg);
+                    } else {
+                        alert('Terjadi kesalahan');
+                    }
+                },
+                complete: function() {
+                    // Re-enable submit button
+                    $('#save-karyawan-btn').prop('disabled', false).text('Simpan');
+                }
+            });
+        });
+
+        // Delete karyawan
+        $(document).on('click', '.delete-karyawan-btn', function() {
+            const id = $(this).data('id');
+            if (confirm('Apakah Anda yakin ingin menghapus karyawan ini?')) {
+                $.ajax({
+                    url: `/karyawan/${id}`,
+                    method: 'DELETE',
+                    data: {
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            alert(response.message);
+                            loadKaryawanData(); // Reload table via AJAX
+                        }
+                    },
+                    error: function() {
+                        alert('Terjadi kesalahan saat menghapus');
+                    }
+                });
+            }
+        });
+    }
+
 
     // ========== PREVIEW SUBMISSION ==========
     function handlePreview(canvas) {
@@ -428,6 +1052,29 @@
 
     // ========== GENERATE SUBMISSION ==========
     function handleGenerate(canvas) {
+        // Validate data source
+        const dataSource = $('input[name="data_source"]:checked').val();
+        
+        if (dataSource === 'database') {
+            const selectedCount = window.selectedKaryawanIds.size;
+            if (selectedCount === 0) {
+                alert('Pilih minimal 1 karyawan untuk generate sertifikat');
+                return;
+            }
+            
+            // Add all selected IDs as hidden inputs to form
+            $('#main-form input[name="selected_karyawan[]"]').remove(); // Remove existing
+            window.selectedKaryawanIds.forEach(function(id) {
+                $('#main-form').append(`<input type="hidden" name="selected_karyawan[]" value="${id}">`);
+            });
+        } else {
+            const fileInput = document.getElementById('participant_file');
+            if (!fileInput.files.length) {
+                alert('Pilih file data peserta');
+                return;
+            }
+        }
+
         $('#template_json').val(JSON.stringify(canvas.toJSON(['isPlaceholder', 'isSignatureBlock', 'signatureIndex'])));
         const form = document.getElementById('main-form');
         const formData = new FormData(form);
@@ -439,7 +1086,6 @@
         const dataUrl = canvas.toDataURL({ format: 'png' });
         formData.append('canvas_image', dataUrl);
 
-
         fetch(form.action, {
             method: 'POST',
             headers: {'X-CSRF-TOKEN': document.querySelector('input[name="_token"]').value},
@@ -450,6 +1096,11 @@
             if (data.batchId) {
                 startPolling(data.batchId);
             }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            bar.classList.add('bg-danger');
+            bar.innerText = '❌ Terjadi kesalahan';
         });
     }
 
