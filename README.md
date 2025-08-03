@@ -1,6 +1,11 @@
 # Aplikasi Generator Sertifikat Bulk dengan Laravel
 
-Aplikasi web canggih yang dibangun menggunakan Laravel 7 untuk membuat sertifikat secara massal dari data file Excel/CSV. Aplikasi ini dilengkapi dengan dashboard admin, editor template dinamis, sistem queue untuk performa optimal, dan kemampuan untuk mengunduh semua sertifikat yang dihasilkan dalam satu file ZIP dengan unduhan otomatis.
+Aplikasi web canggih yang dibangun menggunakan Laravel 7 untuk membuat sertifikat secara massal dari da2.  **Isi Form Data:**
+    -   Pilih jenis sertifikat dan isi nama acara.
+    -   **Input Nomor Sertifikat:** Masukkan prefix seperti `CERT-2025-001` (akan otomatis bertambah).
+    -   Atur tanggal mulai, akhir acara.
+    -   **Input Tempat & Tanggal Penandatanganan:** Masukkan tempat (contoh: "Bandung") dan tanggal penandatanganan.
+    -   Tambahkan deskripsi kustom jika diperlukan.le Excel/CSV. Aplikasi ini dilengkapi dengan dashboard admin, editor template dinamis, sistem queue untuk performa optimal, dan kemampuan untuk mengunduh semua sertifikat yang dihasilkan dalam satu file ZIP dengan unduhan otomatis.
 
 <p align="center"><img src="https://i.imgur.com/ppyUYbu.png" width="1000"></p>
 
@@ -210,7 +215,7 @@ Template mendukung placeholder berikut:
 -   `@{{jenis_sertifikat}}` - Jenis sertifikat yang dipilih
 -   `@{{nama_acara}}` - Nama acara dari form
 -   `@{{tanggal_acara}}` - Tanggal acara (format otomatis)
--   `@{{tanggal_penandatanganan}}` - Tanggal penandatanganan
+-   `@{{tanggal_penandatanganan}}` - Tempat dan tanggal penandatanganan (format: "Bandung, 01 Juli 2025")
 
 ### Data Sertifikat
 -   `@{{nomor_sertifikat}}` - Nomor sertifikat dengan auto-increment
@@ -250,6 +255,32 @@ Template mendukung placeholder berikut:
     -   Jalankan `php artisan migrate` untuk memastikan tabel terbaru.
     -   Jalankan `composer dump-autoload` jika ada error class not found.
     -   Periksa koneksi database di file `.env`.
+
+### ⚠️ **Peringatan Penting: Duplikasi Nomor Sertifikat**
+
+-   **Error Duplicate Certificate Number:**
+    -   **PENYEBAB:** Database memiliki constraint UNIQUE pada kolom `certificate_number`.
+    -   **KAPAN TERJADI:** Saat mencoba membuat sertifikat dengan nomor yang sudah ada di database.
+    -   **CONTOH ERROR:** `SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'SER/PE/BD/III/2023/05' for key 'certificates_certificate_number_unique'`
+
+-   **Skenario yang AMAN:**
+    ```
+    ✅ Nama sama + Nomor berbeda (OK)
+    ✅ Nama berbeda + Nomor berbeda (OK)
+    ❌ Nomor sama + Nama apapun (ERROR)
+    ```
+
+-   **Solusi untuk Penelitian:**
+    1. **Gunakan nomor sertifikat yang unik** untuk setiap batch
+    2. **Tambahkan suffix** pada nomor (contoh: `SER/PE/BD/III/2023/05-001`, `SER/PE/BD/III/2023/05-002`)
+    3. **Hapus data lama** sebelum import batch baru dengan nomor yang sama
+    4. **Gunakan prefix berbeda** untuk setiap batch penelitian
+
+-   **Catatan Penting:**
+    -   Nama peserta boleh sama, tidak akan menyebabkan error
+    -   Yang harus unik adalah nomor sertifikat saja
+    -   PDF tetap terbuat meskipun gagal disimpan ke database
+    -   Error ini tidak menghentikan proses batch, hanya melewati sertifikat bermasalah
 
 ### 📝 **Tips Performa**
 

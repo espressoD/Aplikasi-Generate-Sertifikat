@@ -82,7 +82,7 @@ class GenerateCertificateJob implements ShouldQueue
                 ->waitForFunction('window.__done__ === true')
                 ->setOption('dumpio', true)
                 ->deviceScaleFactor(2) // Improve resolution
-                ->windowSize(1600, 1200) // Higher resolution window
+                ->windowSize(1123, 794) // Match exact A4 landscape canvas size
                 ->savePdf($pdfPath);
 
             Log::info("✅ Sertifikat berhasil dibuat: " . basename($pdfPath));
@@ -141,7 +141,7 @@ class GenerateCertificateJob implements ShouldQueue
             $certificateNumber = $participantArray['certificate_number'] ?? 
                                 'CERT-' . date('Y') . '-' . str_pad(rand(1, 99999), 5, '0', STR_PAD_LEFT);
 
-            // Extract event date from participant data or use current date
+            // Extract event date from participant data and convert to proper MySQL format
             $eventDate = null;
             if (isset($participantArray['event_date'])) {
                 $eventDate = $participantArray['event_date'];
@@ -149,6 +149,19 @@ class GenerateCertificateJob implements ShouldQueue
                 $eventDate = $participantArray['tanggal_acara'];
             } else {
                 $eventDate = now()->format('Y-m-d');
+            }
+
+            // Convert formatted date to MySQL date format if needed
+            if ($eventDate && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $eventDate)) {
+                try {
+                    // Try to parse the formatted date and convert to Y-m-d format
+                    $parsedDate = \Carbon\Carbon::createFromFormat('j F Y', $eventDate);
+                    $eventDate = $parsedDate->format('Y-m-d');
+                } catch (\Exception $e) {
+                    // If parsing fails, use today's date as fallback
+                    Log::warning("Failed to parse event date '{$eventDate}', using fallback date");
+                    $eventDate = now()->format('Y-m-d');
+                }
             }
 
             // Create individual certificate record
@@ -161,8 +174,6 @@ class GenerateCertificateJob implements ShouldQueue
                 'pdf_path' => $pdfPath,
                 'participant_data' => json_encode($participantArray),
                 'template_data' => $this->templateJson,
-                'created_at' => now(),
-                'updated_at' => now(),
             ]);
 
             Log::info("📝 Individual certificate saved to database: ID {$certificate->id} for {$this->recipientName}");

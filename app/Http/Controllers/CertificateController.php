@@ -55,7 +55,7 @@ class CertificateController extends Controller
             ->waitForFunction('window.__done__ === true')
             ->setOption('dumpio', true)
             ->deviceScaleFactor(2)
-            ->windowSize(1600, 1200)
+            ->windowSize(1123, 794) // Match exact A4 landscape canvas size
             ->savePdf($tempPdfPath);
 
         return $tempPdfPath;

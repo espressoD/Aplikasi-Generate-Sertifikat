@@ -145,6 +145,11 @@
                         text = replacePlaceholders(text, 'deskripsi_3', participantData.description3);
                         text = replacePlaceholders(text, 'id_lengkap_peserta', participantData.recipientFullId);
                         text = replacePlaceholders(text, 'peran_penerima', participantData.recipientRole);
+                        // Add nilai placeholders
+                        text = replacePlaceholders(text, 'nilai_1', participantData.nilai1);
+                        text = replacePlaceholders(text, 'nilai_2', participantData.nilai2);
+                        text = replacePlaceholders(text, 'nilai_3', participantData.nilai3);
+                        text = replacePlaceholders(text, 'nilai_4', participantData.nilai4);
                         obj.set('text', text);
                     }
                 });

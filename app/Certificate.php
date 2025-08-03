@@ -3,6 +3,7 @@
 namespace App;
 
 use Illuminate\Database\Eloquent\Model;
+use Carbon\Carbon;
 
 class Certificate extends Model
 {
@@ -16,4 +17,26 @@ class Certificate extends Model
         'participant_data',
         'template_data',
     ];
+
+    protected $dates = [
+        'created_at',
+        'updated_at',
+        'event_date',
+    ];
+
+    /**
+     * Get the created_at attribute with proper timezone.
+     */
+    public function getCreatedAtAttribute($value)
+    {
+        return $this->asDateTime($value)->setTimezone(config('app.timezone'));
+    }
+
+    /**
+     * Get the updated_at attribute with proper timezone.
+     */
+    public function getUpdatedAtAttribute($value)
+    {
+        return $this->asDateTime($value)->setTimezone(config('app.timezone'));
+    }
 }

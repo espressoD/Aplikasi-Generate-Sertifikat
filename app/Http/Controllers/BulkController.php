@@ -59,7 +59,7 @@ class BulkController extends Controller
         }
 
                 $participantData = $this->prepareParticipantData($request, [
-            'Nama Contoh', 'email@contoh.com', 'Peserta', 'ID123', 'Divisi A'
+            'Nama Contoh', 'email@contoh.com', 'Peserta', 'ID123', 'Divisi A', '85', '90', '78', '92'
         ], $signatureData, 1); // Add certificate counter for preview
 
         //dd($participantData);
@@ -83,6 +83,7 @@ class BulkController extends Controller
                 'start_date' => 'required|date',
                 'end_date'   => 'required|date|after_or_equal:start_date',
                 'signing_date' => 'required|date',
+                'signing_place' => 'required|string|max:100',
                 'certificate_number_prefix' => 'required|string|max:50',
                 'template_json' => 'required|json',
                 'participant_file' => 'required|file|mimes:csv,xlsx,txt',
@@ -227,8 +228,10 @@ class BulkController extends Controller
             }
         }
 
-        // Format tanggal penandatanganan
+        // Format tanggal penandatanganan dengan tempat
+        $signingPlace = $request->signing_place ?? '';
         $formattedSigningDate = Carbon::parse($request->signing_date)->isoFormat('D MMMM Y');
+        $fullSigningLocation = $signingPlace ? $signingPlace . ', ' . $formattedSigningDate : $formattedSigningDate;
 
         // Gabungkan ID dan Divisi
         $recipientId = trim($participantRow[3] ?? '');
@@ -256,6 +259,12 @@ class BulkController extends Controller
             $certificateNumber = date('Y') . '/' . date('m') . '/CERT/' . Str::random(8);
         }
 
+        // Extract nilai columns (nilai_1, nilai_2, nilai_3, nilai_4) with default "-" if empty
+        $nilai1 = trim($participantRow[5] ?? '') ?: '-';
+        $nilai2 = trim($participantRow[6] ?? '') ?: '-';
+        $nilai3 = trim($participantRow[7] ?? '') ?: '-';
+        $nilai4 = trim($participantRow[8] ?? '') ?: '-';
+
         return [
             // Data dari Excel/dummy
             'recipientName'     => trim($participantRow[0] ?? ''),
@@ -265,13 +274,19 @@ class BulkController extends Controller
             'recipientDivision' => $recipientDivision,
             'recipientFullId'   => $recipientFullId,
 
+            // Data nilai dari Excel (kolom 5-8)
+            'nilai1'            => $nilai1,
+            'nilai2'            => $nilai2,
+            'nilai3'            => $nilai3,
+            'nilai4'            => $nilai4,
+
             // Data dari Form
             'certificateType'   => $request->certificate_type,
             'eventName'         => $request->event_name,
             'event_name'        => $request->event_name, // Add both for compatibility
-            'event_date'        => $formattedEventDate, // Add for database storage
-            'eventDate'         => $formattedEventDate,
-            'signingDate'       => $formattedSigningDate,
+            'event_date'        => $startDate->format('Y-m-d'), // MySQL format for database
+            'eventDate'         => $formattedEventDate, // Formatted for display
+            'signingDate'       => $fullSigningLocation, // Combined place and date
             'description1'      => isset($request->descriptions) ? ($request->descriptions[0] ?? '') : '',
             'description2'      => isset($request->descriptions) ? ($request->descriptions[1] ?? '') : '',
             'description3'      => isset($request->descriptions) ? ($request->descriptions[2] ?? '') : '',
