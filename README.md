@@ -7,7 +7,7 @@ Aplikasi web canggih yang dibangun menggunakan Laravel 7 untuk membuat sertifika
     -   **Input Tempat & Tanggal Penandatanganan:** Masukkan tempat (contoh: "Bandung") dan tanggal penandatanganan.
     -   Tambahkan deskripsi kustom jika diperlukan.le Excel/CSV. Aplikasi ini dilengkapi dengan dashboard admin, editor template dinamis, sistem queue untuk performa optimal, dan kemampuan untuk mengunduh semua sertifikat yang dihasilkan dalam satu file ZIP dengan unduhan otomatis.
 
-<p align="center"><img src="https://i.imgur.com/ppyUYbu.png" width="1000"></p>
+<p align="center"><img src="https://i.imgur.com/Y3Ej01a.png" width="1000"></p>
 
 ---
 
