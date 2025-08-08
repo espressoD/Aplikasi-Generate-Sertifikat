@@ -3,7 +3,7 @@
 
 Aplikasi web canggih berbasis Laravel 7 untuk membuat sertifikat secara massal dari data Excel/CSV dan database karyawan. Dilengkapi dashboard komprehensif, editor template dinamis, sistem queue untuk performa optimal, dan advanced certificate numbering system.
 
-<p align="center"><img src="https://i.imgur.com/ppyUYbu.png" width="1000"></p>
+<p align="center"><img src="https://i.imgur.com/Y3Ej01a.png" width="1000"></p>
 
 ---
 
