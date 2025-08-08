@@ -22,7 +22,7 @@
             <div class="icon">
                 <i class="fas fa-file-signature"></i>
             </div>
-            <a href="#" class="small-box-footer">Info lebih lanjut <i class="fas fa-arrow-circle-right"></i></a>
+            <a href="{{ route('certificates.list') }}" class="small-box-footer">Info lebih lanjut <i class="fas fa-arrow-circle-right"></i></a>
         </div>
     </div>
     <div class="col-lg-4 col-6">
@@ -34,7 +34,7 @@
             <div class="icon">
                 <i class="fas fa-calendar-check"></i>
             </div>
-            <a href="#" class="small-box-footer">Info lebih lanjut <i class="fas fa-arrow-circle-right"></i></a>
+            <a href="{{ route('batches.list') }}" class="small-box-footer">Info lebih lanjut <i class="fas fa-arrow-circle-right"></i></a>
         </div>
     </div>
     <div class="col-lg-4 col-6">
@@ -70,7 +70,7 @@
         {{-- Ganti seluruh blok <div class="card"> untuk tabel dengan ini --}}
         <div class="card">
             <div class="card-header">
-                <h3 class="card-title">Batch Sertifikat Terbaru</h3>
+                <h3 class="card-title">5 Batch Sertifikat Terbaru</h3>
             </div>
             <div class="card-body">
                 <table class="table table-bordered table-hover">
@@ -87,15 +87,20 @@
                     <tbody>
                         @forelse ($certificateBatches as $batch)
                             <tr>
-                                <td>{{ $loop->iteration + ($certificateBatches->currentPage() - 1) * $certificateBatches->perPage() }}</td>
-                                <td>{{ $batch->event_name }}</td>
+                                <td>{{ $loop->iteration }}</td>
                                 <td>
-                                    <span class="badge badge-info">{{ $batch->completed_jobs }} sertifikat</span>
+                                    <strong>{{ $batch->event_name }}</strong>
+                                </td>
+                                <td>
+                                    <span class="badge badge-info">
+                                        <i class="fas fa-certificate"></i>
+                                        {{ number_format($batch->completed_jobs) }}
+                                    </span>
                                 </td>
                                 <td>
                                     @if ($batch->is_zipped)
                                         <span class="badge badge-success">
-                                            <i class="fas fa-check"></i> Selesai
+                                            <i class="fas fa-check-circle"></i> Selesai
                                         </span>
                                     @else
                                         <span class="badge badge-warning">
@@ -103,117 +108,134 @@
                                         </span>
                                     @endif
                                 </td>
-                                <td>{{ $batch->created_at->format('d M Y, H:i') }}</td>
+                                <td>
+                                    <small class="text-muted">
+                                        <i class="fas fa-calendar"></i>
+                                        {{ $batch->created_at->format('d M Y, H:i') }}
+                                    </small>
+                                </td>
                                 <td>
                                     @if ($batch->is_zipped)
                                         @php
                                             $zipFilename = 'sertifikat-' . Str::slug($batch->event_name) . '-' . $batch->batch_id . '.zip';
                                         @endphp
-                                        <a href="{{ url('/download-zip/' . $zipFilename) }}" class="btn btn-sm btn-success" title="Download ZIP">
+                                        <a href="{{ url('/download-zip/' . $zipFilename) }}" 
+                                           class="btn btn-sm btn-success" 
+                                           title="Download ZIP">
                                             <i class="fas fa-download"></i>
                                         </a>
                                     @else
-                                        <span class="text-muted">-</span>
+                                        <span class="btn btn-sm btn-secondary disabled" title="Sedang Diproses">
+                                            <i class="fas fa-hourglass-half"></i>
+                                        </span>
                                     @endif
                                 </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="6" class="text-center">Belum ada batch sertifikat yang dibuat.</td>
+                                <td colspan="6" class="text-center py-4">
+                                    <i class="fas fa-boxes fa-2x text-muted mb-2"></i>
+                                    <br>
+                                    <span class="text-muted">Belum ada batch sertifikat yang dibuat.</span>
+                                    <br>
+                                    <a href="{{ route('certificates.bulk.form') }}" class="btn btn-sm btn-primary mt-2">
+                                        <i class="fas fa-plus"></i> Buat Batch Pertama
+                                    </a>
+                                </td>
                             </tr>
                         @endforelse
                     </tbody>
                 </table>
-            </div>
-            <div class="card-footer clearfix">
-                {{ $certificateBatches->links() }}
             </div>
         </div>
             {{-- Akhir dari blok <div class="card"> untuk tabel --}}
     </section>
 </div>
 
-{{-- Tabel untuk sertifikat individual --}}
-<div class="row">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h3 class="card-title">Sertifikat Individual</h3>
-            </div>
-            <div class="card-body">
-                <table class="table table-bordered table-hover">
-                    <thead>
-                        <tr>
-                            <th style="width: 10px">#</th>
-                            <th>Nama Penerima</th>
-                            <th>Acara</th>
-                            <th>No. Sertifikat</th>
-                            <th>Tanggal</th>
-                            <th style="width: 150px">Aksi</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse ($certificates as $certificate)
-                            <tr>
-                                <td>{{ $loop->iteration + ($certificates->currentPage() - 1) * $certificates->perPage() }}</td>
-                                <td>{{ $certificate->recipient_name }}</td>
-                                <td>{{ $certificate->event_name }}</td>
-                                <td>{{ $certificate->certificate_number }}</td>
-                                <td>{{ $certificate->created_at->format('d M Y, H:i') }}</td>
-                                <td>
-                                    <div class="btn-group" role="group" aria-label="Aksi Sertifikat">
-                                        <a href="{{ route('certificates.show', $certificate->id) }}" class="btn btn-sm btn-info" target="_blank" title="Lihat Sertifikat">
-                                            <i class="fas fa-eye"></i>
-                                        </a>
-                                        <a href="{{ route('certificates.download', $certificate->id) }}" class="btn btn-sm btn-success" title="Unduh Sertifikat">
-                                            <i class="fas fa-download"></i>
-                                        </a>
-                                    </div>
-                                </td>
-                            </tr>
-                        @empty
-                            <tr>
-                                <td colspan="6" class="text-center">Belum ada sertifikat individual yang dibuat.</td>
-                            </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-            <div class="card-footer clearfix">
-                {{ $certificates->links() }}
-            </div>
-        </div>
-    </div>
-</div>
 @endsection
 
 @push('scripts')
 <script>
+document.addEventListener('DOMContentLoaded', function() {
     var ctx = document.getElementById('myBarChart').getContext('2d');
+    
+    // Chart data
+    var chartLabels = {!! json_encode($chartLabels) !!};
+    var chartData = {!! json_encode($chartData) !!};
+    
+    // If no data, show placeholder
+    if (chartLabels.length === 0 || chartData.length === 0) {
+        chartLabels = ['Jan 2025', 'Feb 2025', 'Mar 2025', 'Apr 2025', 'Mei 2025', 'Jun 2025'];
+        chartData = [0, 0, 0, 0, 0, 0];
+        
+        // Add empty state message
+        var chartContainer = document.getElementById('myBarChart').parentElement;
+        var emptyMessage = document.createElement('div');
+        emptyMessage.className = 'chart-empty-state';
+        emptyMessage.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: #999; z-index: 10; pointer-events: none;';
+        emptyMessage.innerHTML = '<i class="fas fa-chart-bar fa-2x mb-2"></i><br><small>Belum ada data untuk 6 bulan terakhir</small>';
+        chartContainer.style.position = 'relative';
+        chartContainer.appendChild(emptyMessage);
+    }
+    
     var myBarChart = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: {!! json_encode($chartLabels) !!},
+            labels: chartLabels,
             datasets: [{
                 label: 'Jumlah Sertifikat',
-                data: {!! json_encode($chartData) !!},
-                backgroundColor: 'rgba(0, 123, 255, 0.7)',
-                borderColor: 'rgba(0, 123, 255, 1)',
-                borderWidth: 1
+                data: chartData,
+                backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1,
+                borderRadius: 4,
+                borderSkipped: false,
             }]
         },
         options: {
             maintainAspectRatio: false,
             responsive: true,
-            scales: {
-                yAxes: [{
-                    ticks: {
-                        beginAtZero: true,
-                        stepSize: 1 // memastikan skala y adalah bilangan bulat
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return context.dataset.label + ': ' + context.parsed.y.toLocaleString() + ' sertifikat';
+                        }
                     }
-                }]
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 1,
+                        callback: function(value) {
+                            return Number.isInteger(value) ? value.toLocaleString() : '';
+                        }
+                    },
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.1)',
+                    }
+                },
+                x: {
+                    grid: {
+                        display: false
+                    },
+                    ticks: {
+                        maxRotation: 45
+                    }
+                }
+            },
+            animation: {
+                duration: 1000,
+                easing: 'easeInOutQuart'
             }
         }
     });
+});
 </script>
 @endpush

@@ -57,11 +57,20 @@
                         <input type="text" class="form-control" id="event_name" name="event_name" placeholder="Masukkan nama acara" required>
                     </div>
                     <div class="form-group">
-                        <label for="certificate_number_prefix">Nomor Sertifikat</label>
+                        <label for="certificate_number_prefix">
+                            Nomor Sertifikat 
+                            <i class="fas fa-info-circle text-info" data-toggle="tooltip" 
+                               title="Gunakan {AUTO} atau {AUTO:start_number} untuk kontrol penuh penomoran"></i>
+                        </label>
                         <input type="text" class="form-control" id="certificate_number_prefix" name="certificate_number_prefix" 
-                               placeholder="Contoh: CERT-2025-001 (akan otomatis bertambah untuk setiap peserta)" required>
+                               placeholder="Contoh: CERT-{AUTO:100}-2025 atau PKL-{AUTO:50} atau {AUTO:1000}" required>
                         <small class="form-text text-muted">
-                            Format akan otomatis bertambah: CERT-2025-001, CERT-2025-002, dst. untuk setiap peserta
+                            <strong>Format Fleksibel:</strong><br>
+                            • <code>{AUTO}</code> → mulai dari 001: <code>CERT-{AUTO}-2025</code> → CERT-001-2025, CERT-002-2025<br>
+                            • <code>{AUTO:100}</code> → mulai dari 100: <code>CERT-{AUTO:100}-2025</code> → CERT-100-2025, CERT-101-2025<br>
+                            • <code>{AUTO:50}</code> → mulai dari 50: <code>PKL-{AUTO:50}</code> → PKL-050, PKL-051<br>
+                            • <code>{AUTO:1000}</code> → mulai dari 1000: <code>{AUTO:1000}</code> → 1000, 1001, 1002<br>
+                            <em>Format lama masih didukung untuk backward compatibility</em>
                         </small>
                     </div>
                     <div class="row">
@@ -365,7 +374,11 @@
                     <input type="hidden" id="karyawan-id">
                     <div class="form-group">
                         <label for="karyawan-nama">Nama Lengkap</label>
-                        <input type="text" class="form-control" id="karyawan-nama" required>
+                        <input type="text" class="form-control" id="karyawan-nama" maxlength="25" required>
+                        <div class="d-flex justify-content-between mt-1">
+                            <small id="nama-counter" class="text-muted">0/25 karakter</small>
+                            <small id="nama-error" class="text-danger" style="display: none;"></small>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="karyawan-npk">NPK/ID</label>
@@ -412,6 +425,28 @@
         0% { transform: rotate(0deg); }
         100% { transform: rotate(359deg); }
     }
+
+    /* Character counter styling */
+    #nama-counter {
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+    
+    #nama-error {
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+    
+    /* Enhanced form validation styling */
+    .form-control.is-valid {
+        border-color: #28a745;
+        box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25);
+    }
+    
+    .form-control.is-invalid {
+        border-color: #dc3545;
+        box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
+    }
 </style>
 <script>
     $(document).ready(function() {
@@ -433,6 +468,9 @@
         // ========== 2. === TEMPLATE HANDLER ==========
         const savedTemplates = @json($templates);
         bindTemplateHandlers(canvas, savedTemplates);
+
+        // ========== 3. === CERTIFICATE NUMBER PREVIEW ==========
+        setupCertificateNumberPreview();
 
         // ========== 3. === PREVIEW & GENERATE SUBMISSION ==========
         $('#preview-btn').on('click', () => handlePreview(canvas));
@@ -947,6 +985,7 @@
             $('#karyawan-modal-title').text('Tambah Karyawan');
             $('#karyawan-form')[0].reset();
             $('#karyawan-id').val('');
+            resetNamaValidation();
             $('#karyawan-modal').modal('show');
         });
 
@@ -962,12 +1001,26 @@
             $('#karyawan-nama').val(nama);
             $('#karyawan-npk').val(npk);
             $('#karyawan-divisi').val(divisi);
+            
+            // Trigger validation for existing name
+            validateNamaInput();
             $('#karyawan-modal').modal('show');
+        });
+
+        // Real-time validation for nama input
+        $('#karyawan-nama').on('input', function() {
+            validateNamaInput();
         });
 
         // Save karyawan
         $('#karyawan-form').on('submit', function(e) {
             e.preventDefault();
+            
+            // Final validation before submit
+            if (!validateNamaInput()) {
+                return false;
+            }
+            
             const id = $('#karyawan-id').val();
             const isEdit = id !== '';
             const url = isEdit ? `/karyawan/${id}` : '/karyawan';
@@ -1039,6 +1092,71 @@
                 });
             }
         });
+    }
+
+    // Nama validation functions
+    function validateNamaInput() {
+        const namaInput = $('#karyawan-nama');
+        const nama = namaInput.val();
+        const length = nama.length;
+        const maxLength = 25;
+        
+        // Update counter
+        updateNamaCounter(length, maxLength);
+        
+        // Validate length
+        if (length > maxLength) {
+            setNamaError('Nama tidak boleh lebih dari 25 karakter');
+            return false;
+        } else if (length === 0) {
+            setNamaError('Nama tidak boleh kosong');
+            return false;
+        } else {
+            setNamaValid();
+            return true;
+        }
+    }
+    
+    function updateNamaCounter(current, max) {
+        const counter = $('#nama-counter');
+        counter.text(`${current}/${max} karakter`);
+        
+        if (current > max) {
+            counter.removeClass('text-muted text-success').addClass('text-danger');
+        } else if (current > 0) {
+            counter.removeClass('text-muted text-danger').addClass('text-success');
+        } else {
+            counter.removeClass('text-success text-danger').addClass('text-muted');
+        }
+    }
+    
+    function setNamaError(message) {
+        const namaInput = $('#karyawan-nama');
+        const errorElement = $('#nama-error');
+        
+        namaInput.removeClass('is-valid').addClass('is-invalid');
+        errorElement.text(message).show();
+        $('#save-karyawan-btn').prop('disabled', true);
+    }
+    
+    function setNamaValid() {
+        const namaInput = $('#karyawan-nama');
+        const errorElement = $('#nama-error');
+        
+        namaInput.removeClass('is-invalid').addClass('is-valid');
+        errorElement.hide();
+        $('#save-karyawan-btn').prop('disabled', false);
+    }
+    
+    function resetNamaValidation() {
+        const namaInput = $('#karyawan-nama');
+        const errorElement = $('#nama-error');
+        const counter = $('#nama-counter');
+        
+        namaInput.removeClass('is-valid is-invalid');
+        errorElement.hide();
+        counter.text('0/25 karakter').removeClass('text-success text-danger').addClass('text-muted');
+        $('#save-karyawan-btn').prop('disabled', false);
     }
 
 
@@ -1282,6 +1400,79 @@
             
             console.log(`Signature image successfully replaced for index ${index}`);
         });
+    }
+
+    // Certificate number preview functionality
+    function setupCertificateNumberPreview() {
+        const prefixInput = document.getElementById('certificate_number_prefix');
+        const helpText = prefixInput.parentNode.querySelector('.form-text');
+        
+        function updatePreview() {
+            const prefix = prefixInput.value.trim();
+            if (!prefix) return;
+            
+            let preview = '';
+            
+            // Check for {AUTO:start_number} format
+            const customStartMatch = prefix.match(/\{AUTO:(\d+)\}/);
+            if (customStartMatch) {
+                const startNum = parseInt(customStartMatch[1]);
+                const padding = Math.max(3, customStartMatch[1].length);
+                
+                const example1 = prefix.replace(customStartMatch[0], String(startNum).padStart(padding, '0'));
+                const example2 = prefix.replace(customStartMatch[0], String(startNum + 1).padStart(padding, '0'));
+                const example3 = prefix.replace(customStartMatch[0], String(startNum + 2).padStart(padding, '0'));
+                preview = `<strong>Preview:</strong> ${example1}, ${example2}, ${example3}, ...`;
+            }
+            // Check for {AUTO} format (default start from 1)
+            else if (prefix.includes('{AUTO}')) {
+                const example1 = prefix.replace('{AUTO}', '001');
+                const example2 = prefix.replace('{AUTO}', '002');
+                const example3 = prefix.replace('{AUTO}', '003');
+                preview = `<strong>Preview:</strong> ${example1}, ${example2}, ${example3}, ...`;
+            } 
+            // Legacy format - numbers at end
+            else if (/\d+$/.test(prefix)) {
+                const match = prefix.match(/^(.+?)(\d+)$/);
+                if (match) {
+                    const basePrefix = match[1];
+                    const startNum = parseInt(match[2]);
+                    const pad = match[2].length;
+                    const example1 = basePrefix + String(startNum).padStart(pad, '0');
+                    const example2 = basePrefix + String(startNum + 1).padStart(pad, '0');
+                    const example3 = basePrefix + String(startNum + 2).padStart(pad, '0');
+                    preview = `<strong>Preview:</strong> ${example1}, ${example2}, ${example3}, ...`;
+                }
+            } else {
+                // No pattern - will append counter
+                preview = `<strong>Preview:</strong> ${prefix}-001, ${prefix}-002, ${prefix}-003, ...`;
+            }
+            
+            if (preview) {
+                const currentText = helpText.innerHTML;
+                const lines = currentText.split('<br>');
+                // Replace or add preview line
+                const previewLineIndex = lines.findIndex(line => line.includes('Preview:'));
+                if (previewLineIndex >= 0) {
+                    lines[previewLineIndex] = preview;
+                } else {
+                    lines.push(preview);
+                }
+                helpText.innerHTML = lines.join('<br>');
+            }
+        }
+        
+        // Update preview on input with slight delay
+        let timeoutId;
+        prefixInput.addEventListener('input', function() {
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(updatePreview, 300);
+        });
+        
+        // Initial preview if field has value
+        if (prefixInput.value.trim()) {
+            updatePreview();
+        }
     }
 
     function applyExistingSignatureImages(canvas) {

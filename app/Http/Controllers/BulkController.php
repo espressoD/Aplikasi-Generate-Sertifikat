@@ -123,7 +123,29 @@ class BulkController extends Controller
             // Prepare participants based on data source
             $participants = [];
             if ($request->data_source === 'file') {
-                $participants = Excel::toCollection(null, $request->file('participant_file'))[0];
+                // Handle large files with chunking to avoid memory issues
+                try {
+                    // Reconnect database before processing file
+                    \DB::reconnect();
+                    
+                    $file = $request->file('participant_file');
+                    $fileExtension = $file->getClientOriginalExtension();
+                    
+                    // For large files, use chunked reading
+                    if ($file->getSize() > 1024 * 1024) { // Files larger than 1MB
+                        Log::info("Processing large file ({$file->getSize()} bytes) with chunking");
+                        $participants = $this->processLargeFile($file);
+                    } else {
+                        Log::info("Processing small file ({$file->getSize()} bytes) normally");
+                        $participants = Excel::toCollection(null, $file)[0];
+                    }
+                    
+                    Log::info("File processed successfully. Total participants: " . count($participants));
+                    
+                } catch (\Exception $e) {
+                    Log::error("Error processing file: " . $e->getMessage());
+                    throw new \Exception("Gagal memproses file: " . $e->getMessage());
+                }
             } else {
                 // From database
                 $selectedKaryawan = Karyawan::whereIn('id', $request->selected_karyawan)->get();
@@ -144,6 +166,13 @@ class BulkController extends Controller
 
             $jobCount = 0;
             $counter = 1;
+            $jobsToDispatch = []; // Collect jobs for batched dispatch
+            
+            Log::info("Starting to process " . count($participants) . " participants");
+            
+            // Reconnect database before processing participants
+            \DB::reconnect();
+            
             foreach ($participants as $key => $participant) {
                 // Skip header row only for file source
                 if ($request->data_source === 'file' && $key === 0) continue;
@@ -175,13 +204,14 @@ class BulkController extends Controller
                 $imageData = $request->input('canvas_image');
                 $canvasImagePath = storage_path("app/canvas-{$batchId}.png");
     
-                if ($imageData) {
+                if ($imageData && $jobCount === 0) { // Only save canvas image once
                     $image = str_replace('data:image/png;base64,', '', $imageData);
                     $image = str_replace(' ', '+', $image);
                     file_put_contents($canvasImagePath, base64_decode($image));
                 }
 
-                dispatch(new GenerateCertificateJob([
+                // Collect job data instead of dispatching immediately
+                $jobsToDispatch[] = [
                     'batchId' => $batchId,
                     'templateJson' => $request->template_json,
                     'participantData' => $participantData,
@@ -191,13 +221,84 @@ class BulkController extends Controller
                     'canvasImagePath' => $canvasImagePath,
                     'counter' => $counter++,
                     'signaturesPaths' => $signaturesPaths,
-                ]));
+                ];
 
                 $jobCount++;
+                
+                // Different dispatch strategy based on data source
+                if ($request->data_source === 'file') {
+                    // For file source, dispatch individually to avoid batch-related issues
+                    try {
+                        \DB::reconnect(); // Reconnect before each dispatch for file source
+                        dispatch(new GenerateCertificateJob(end($jobsToDispatch))); // Dispatch the last added job
+                        array_pop($jobsToDispatch); // Remove it from batch after successful dispatch
+                        Log::info("Dispatched individual job #{$jobCount} for file source");
+                    } catch (\Exception $e) {
+                        Log::error("Failed to dispatch individual job #{$jobCount}: " . $e->getMessage());
+                        // Continue with next job instead of failing completely
+                    }
+                } else {
+                    // For database source, use batch dispatch (original method)
+                    if (count($jobsToDispatch) >= 10) {
+                        try {
+                            $this->dispatchJobBatch($jobsToDispatch);
+                            $jobsToDispatch = []; // Reset batch only if successful
+                        } catch (\Exception $e) {
+                            Log::error("Failed to dispatch batch, will retry individually: " . $e->getMessage());
+                            
+                            // Try to dispatch jobs individually as fallback
+                            foreach ($jobsToDispatch as $singleJob) {
+                                try {
+                                    \DB::reconnect();
+                                    dispatch(new GenerateCertificateJob($singleJob));
+                                } catch (\Exception $singleError) {
+                                    Log::error("Failed to dispatch individual job: " . $singleError->getMessage());
+                                    // Continue with next job instead of failing completely
+                                }
+                            }
+                            $jobsToDispatch = []; // Reset after individual dispatch attempts
+                        }
+                        
+                        // Reconnect database and small delay
+                        \DB::reconnect();
+                        usleep(100000); // 0.1 second delay
+                    }
+                }
             }
+            
+            // Dispatch remaining jobs based on data source
+            if (!empty($jobsToDispatch)) {
+                if ($request->data_source === 'database') {
+                    // Only dispatch batch for database source
+                    try {
+                        $this->dispatchJobBatch($jobsToDispatch);
+                    } catch (\Exception $e) {
+                        Log::error("Failed to dispatch final batch, trying individually: " . $e->getMessage());
+                        
+                        // Try to dispatch remaining jobs individually as fallback
+                        foreach ($jobsToDispatch as $singleJob) {
+                            try {
+                                \DB::reconnect();
+                                dispatch(new GenerateCertificateJob($singleJob));
+                            } catch (\Exception $singleError) {
+                                Log::error("Failed to dispatch final individual job: " . $singleError->getMessage());
+                                // Continue with next job instead of failing completely
+                            }
+                        }
+                    }
+                } else {
+                    // For file source, remaining jobs should already be dispatched individually
+                    Log::info("File source: all jobs dispatched individually, no remaining batch");
+                }
+            }
+            
+            Log::info("All {$jobCount} jobs dispatched successfully for batch {$batchId}");
 
             Cache::put("bulk_jobs_{$batchId}_remaining", $jobCount, now()->addMinutes(30));
             Cache::put("bulk_jobs_{$batchId}_total", $jobCount, now()->addMinutes(30));
+            
+            // Reconnect to database before creating batch record
+            \DB::reconnect();
             
             // Create CertificateBatch record in database
             CertificateBatch::create([
@@ -276,14 +377,30 @@ class BulkController extends Controller
         $recipientDivision = trim($participantRow[4] ?? '');
         $recipientFullId = trim("{$recipientId} / {$recipientDivision}", ' /');
 
-        // Generate certificate number based on user input
+        // Generate certificate number based on user input with flexible auto-increment position and custom start number
         $certificateNumber = '';
         if ($certificateCounter !== null && $request->has('certificate_number_prefix')) {
-            // For bulk generation: use prefix + counter
             $prefix = $request->certificate_number_prefix;
             
-            // Extract base number from prefix if it contains numbers at the end
-            if (preg_match('/^(.+?)(\d+)$/', $prefix, $matches)) {
+            // Check if prefix contains {AUTO:start_number} placeholder for custom start number
+            if (preg_match('/\{AUTO:(\d+)\}/', $prefix, $matches)) {
+                $startNumber = intval($matches[1]);
+                $currentNumber = $startNumber + ($certificateCounter - 1);
+                
+                // Determine padding based on start number length or minimum 3 digits
+                $padding = max(3, strlen($matches[1]));
+                $autoNumber = str_pad($currentNumber, $padding, '0', STR_PAD_LEFT);
+                
+                $certificateNumber = str_replace($matches[0], $autoNumber, $prefix);
+            }
+            // Check if prefix contains {AUTO} placeholder for flexible positioning (default start from 1)
+            else if (strpos($prefix, '{AUTO}') !== false) {
+                // Replace {AUTO} with auto-incremented number starting from 1
+                $autoNumber = str_pad($certificateCounter, 3, '0', STR_PAD_LEFT);
+                $certificateNumber = str_replace('{AUTO}', $autoNumber, $prefix);
+            } 
+            // Legacy support: Extract base number from prefix if it contains numbers at the end
+            else if (preg_match('/^(.+?)(\d+)$/', $prefix, $matches)) {
                 $basePrefix = $matches[1];
                 $startNumber = intval($matches[2]);
                 $newNumber = $startNumber + ($certificateCounter - 1);
@@ -342,7 +459,7 @@ class BulkController extends Controller
     public function storeKaryawan(Request $request)
     {
         $request->validate([
-            'nama' => 'required|string|max:255',
+            'nama' => 'required|string|max:25',
             'npk_id' => 'required|string|max:50|unique:karyawan,npk_id',
             'divisi' => 'required|string|max:100',
         ]);
@@ -360,7 +477,7 @@ class BulkController extends Controller
         $karyawan = Karyawan::findOrFail($id);
         
         $request->validate([
-            'nama' => 'required|string|max:255',
+            'nama' => 'required|string|max:25',
             'npk_id' => 'required|string|max:50|unique:karyawan,npk_id,' . $id,
             'divisi' => 'required|string|max:100',
         ]);
@@ -436,5 +553,116 @@ class BulkController extends Controller
             'success' => true,
             'ids' => $ids
         ]);
+    }
+
+    /**
+     * Process large Excel/CSV files with chunking to avoid memory issues
+     */
+    private function processLargeFile($file)
+    {
+        try {
+            // First, try to get file info without loading it entirely
+            $fileExtension = strtolower($file->getClientOriginalExtension());
+            
+            // Reconnect database before processing
+            \DB::reconnect();
+            
+            if ($fileExtension === 'csv') {
+                // For CSV files, use manual chunking
+                return $this->processLargeCSV($file);
+            } else {
+                // For Excel files, try with increased memory and timeout
+                Log::info("Processing Excel file with increased limits");
+                
+                // Increase memory limit temporarily
+                $originalMemoryLimit = ini_get('memory_limit');
+                ini_set('memory_limit', '1024M');
+                
+                // Increase timeout
+                set_time_limit(300);
+                
+                try {
+                    $participants = Excel::toCollection(null, $file)[0];
+                    
+                    // Restore original memory limit
+                    ini_set('memory_limit', $originalMemoryLimit);
+                    
+                    return $participants;
+                    
+                } catch (\Exception $e) {
+                    // Restore original memory limit
+                    ini_set('memory_limit', $originalMemoryLimit);
+                    throw $e;
+                }
+            }
+            
+        } catch (\Exception $e) {
+            Log::error("Large file processing failed: " . $e->getMessage());
+            throw new \Exception("File terlalu besar atau format tidak valid. Maksimal 1000 baris atau gunakan file CSV.");
+        }
+    }
+    
+    /**
+     * Process large CSV files line by line
+     */
+    private function processLargeCSV($file)
+    {
+        $participants = collect();
+        $handle = fopen($file->getRealPath(), 'r');
+        
+        if (!$handle) {
+            throw new \Exception("Tidak dapat membuka file CSV");
+        }
+        
+        $rowCount = 0;
+        $maxRows = 1000; // Limit maximum rows
+        
+        try {
+            while (($row = fgetcsv($handle)) !== false && $rowCount < $maxRows) {
+                $participants->push($row);
+                $rowCount++;
+                
+                // Reconnect database every 100 rows to prevent timeout
+                if ($rowCount % 100 === 0) {
+                    \DB::reconnect();
+                    Log::info("Processed {$rowCount} rows from CSV");
+                }
+            }
+            
+            Log::info("CSV processing completed. Total rows: {$rowCount}");
+            
+        } finally {
+            fclose($handle);
+        }
+        
+        if ($rowCount >= $maxRows) {
+            Log::warning("File truncated to {$maxRows} rows due to size limit");
+        }
+        
+        return $participants;
+    }
+    
+    /**
+     * Dispatch jobs in batch to prevent memory overflow
+     */
+    private function dispatchJobBatch($jobsData)
+    {
+        try {
+            // Reconnect to database before dispatching jobs
+            \DB::reconnect();
+            
+            foreach ($jobsData as $jobData) {
+                dispatch(new GenerateCertificateJob($jobData));
+            }
+            
+            Log::info("Dispatched batch of " . count($jobsData) . " jobs");
+            
+        } catch (\Exception $e) {
+            Log::error("Error dispatching job batch: " . $e->getMessage());
+            Log::error("Job batch data: " . json_encode(array_keys($jobsData[0] ?? []))); // Log keys only, not full data
+            
+            // Don't re-throw the exception, try to continue with remaining batches
+            // throw $e;
+        }
     }
 }

@@ -32,6 +32,9 @@ class GenerateCertificateJob implements ShouldQueue
     protected $canvasImagePath;
     protected $signaturesPaths;
 
+    public $timeout = 300; // 5 minutes timeout
+    public $tries = 3; // Retry 3 times if failed
+
 
     /**
      * Create a new job instance.
@@ -55,6 +58,9 @@ class GenerateCertificateJob implements ShouldQueue
     public function handle(): void
     {
         try {
+            // Reconnect to database to avoid "MySQL server has gone away" error
+            \DB::reconnect();
+            
             // 1. Ubah JSON template dan data peserta menjadi array PHP
             $templateArray = json_decode($this->templateJson, true);
             $participantArray = $this->participantData;
@@ -104,6 +110,9 @@ class GenerateCertificateJob implements ShouldQueue
             $remaining = Cache::decrement($remainingKey);
     
             Log::info("Sisa job batch {$this->batchId}: {$remaining}");
+            
+            // Reconnect before database operation
+            \DB::reconnect();
             CertificateBatch::where('batch_id', $this->batchId)->increment('completed_jobs');
     
             if ($remaining === 0) {
@@ -137,6 +146,9 @@ class GenerateCertificateJob implements ShouldQueue
     protected function saveIndividualCertificate($pdfPath, $participantArray)
     {
         try {
+            // Reconnect to database before database operation
+            \DB::reconnect();
+            
             // Generate certificate number if not exists
             $certificateNumber = $participantArray['certificate_number'] ?? 
                                 'CERT-' . date('Y') . '-' . str_pad(rand(1, 99999), 5, '0', STR_PAD_LEFT);
@@ -164,19 +176,45 @@ class GenerateCertificateJob implements ShouldQueue
                 }
             }
 
-            // Create individual certificate record
-            $certificate = Certificate::create([
-                'recipient_name' => $this->recipientName,
-                'event_name' => $this->eventName,
-                'event_date' => $eventDate,
-                'certificate_number' => $certificateNumber,
-                'batch_id' => $this->batchId,
-                'pdf_path' => $pdfPath,
-                'participant_data' => json_encode($participantArray),
-                'template_data' => $this->templateJson,
-            ]);
+            // Create individual certificate record with retry mechanism
+            $retryCount = 0;
+            $maxRetries = 3;
+            
+            while ($retryCount < $maxRetries) {
+                try {
+                    $certificate = Certificate::create([
+                        'recipient_name' => $this->recipientName,
+                        'event_name' => $this->eventName,
+                        'event_date' => $eventDate,
+                        'certificate_number' => $certificateNumber,
+                        'batch_id' => $this->batchId,
+                        'pdf_path' => $pdfPath,
+                        'participant_data' => json_encode($participantArray),
+                        'template_data' => $this->templateJson,
+                    ]);
 
-            Log::info("📝 Individual certificate saved to database: ID {$certificate->id} for {$this->recipientName}");
+                    Log::info("📝 Individual certificate saved to database: ID {$certificate->id} for {$this->recipientName}");
+                    break; // Success, exit retry loop
+                    
+                } catch (\Illuminate\Database\QueryException $e) {
+                    $retryCount++;
+                    
+                    if (strpos($e->getMessage(), 'MySQL server has gone away') !== false || 
+                        strpos($e->getMessage(), 'Lost connection') !== false) {
+                        
+                        Log::warning("Database connection lost, reconnecting... Attempt {$retryCount}/{$maxRetries}");
+                        \DB::reconnect();
+                        
+                        if ($retryCount >= $maxRetries) {
+                            throw $e; // Re-throw after max retries
+                        }
+                        
+                        sleep(1); // Wait 1 second before retry
+                    } else {
+                        throw $e; // Re-throw if it's not a connection issue
+                    }
+                }
+            }
 
         } catch (Throwable $e) {
             Log::error("❌ Failed to save individual certificate: " . $e->getMessage());

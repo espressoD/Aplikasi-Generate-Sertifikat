@@ -25,6 +25,9 @@ class GenerateZipJob implements ShouldQueue
     protected $eventName;
     protected $recipientEmail;
 
+    public $timeout = 300; // 5 minutes timeout
+    public $tries = 2; // Retry 2 times if failed
+
     public function __construct($batchId, $outputDir, $eventName, $recipientEmail = null)
     {
         $this->batchId        = $batchId;
@@ -36,6 +39,9 @@ class GenerateZipJob implements ShouldQueue
     public function handle(): void
     {
         try {
+            // Reconnect to database to avoid "MySQL server has gone away" error
+            \DB::reconnect();
+            
             $zipFilename = 'sertifikat-' . Str::slug($this->eventName) . '-' . $this->batchId . '.zip';
             $zipPath = storage_path('app/' . $zipFilename);
 
@@ -59,6 +65,8 @@ class GenerateZipJob implements ShouldQueue
             Cache::put("bulk_jobs_{$this->batchId}_zip_filename", $zipFilename, now()->addHours(2));
             Log::info("📁 ZIP filename stored in cache: $zipFilename for batch: {$this->batchId}");
             
+            // Reconnect before database operation
+            \DB::reconnect();
             CertificateBatch::where('batch_id', $this->batchId)->update(['is_zipped' => true]);
             Log::info("✅ CertificateBatch updated - is_zipped = true for batch: {$this->batchId}");
             @unlink(storage_path("app/canvas-{$this->batchId}.png"));

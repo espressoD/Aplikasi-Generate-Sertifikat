@@ -20,9 +20,15 @@
             </a>
           </li>
           <li class="nav-item">
-            <a href="#" class="nav-link">
+            <a href="{{ route('certificates.list') }}" class="nav-link {{ request()->is('certificates*') ? 'active' : '' }}">
               <i class="nav-icon fas fa-list"></i>
               <p>Daftar Sertifikat</p>
+            </a>
+          </li>
+          <li class="nav-item">
+            <a href="{{ route('batches.list') }}" class="nav-link {{ request()->is('batches*') ? 'active' : '' }}">
+              <i class="nav-icon fas fa-boxes"></i>
+              <p>Daftar Batch</p>
             </a>
           </li>
         </ul>
