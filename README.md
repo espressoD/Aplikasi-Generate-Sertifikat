@@ -187,8 +187,6 @@ QUEUE_CONNECTION=database
 # Chrome/Chromium Path (sesuaikan dengan sistem Anda)
 # Windows XAMPP example:
 BROWSERSHOT_CHROME_PATH="C:\Program Files\Google\Chrome\Application\chrome.exe"
-# Linux example:
-# BROWSERSHOT_CHROME_PATH=/usr/bin/google-chrome
 ```
 
 #### 3. Database Setup
@@ -204,42 +202,6 @@ php artisan db:seed
 ```bash
 # Create symbolic link for public storage
 php artisan storage:link
-
-# Set proper permissions (Linux/Mac)
-chmod -R 755 storage bootstrap/cache
-```
-
-#### 5. Queue Worker Setup
-**Untuk Windows (XAMPP):** Jalankan batch file yang sudah disediakan:
-```cmd
-# Start queue worker
-start-queue-worker.bat
-
-# Monitor queue status
-monitor-queue.bat
-```
-
-**Untuk Linux/Mac:** Jalankan queue worker manual:
-```bash
----
-
-## 🔧 Technical Configuration
-
-### Queue System Setup
-
-**Windows Batch Files (Sudah Tersedia):**
-```cmd
-# Start Queue Worker (start-queue-worker.bat)
-@echo off
-echo Starting Laravel Queue Worker...
-cd /d "C:\xampp\htdocs\Aplikasi-Generate-Sertifikat"
-php artisan queue:work --timeout=0 --tries=3
-
-# Monitor Queue (monitor-queue.bat)
-@echo off
-echo Monitoring Queue Jobs...
-cd /d "C:\xampp\htdocs\Aplikasi-Generate-Sertifikat"
-php artisan queue:monitor
 ```
 
 **Manual Queue Commands:**
@@ -264,13 +226,6 @@ php artisan queue:monitor
 # Windows Examples
 BROWSERSHOT_CHROME_PATH="C:\Program Files\Google\Chrome\Application\chrome.exe"
 BROWSERSHOT_CHROME_PATH="C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
-
-# Linux Examples
-BROWSERSHOT_CHROME_PATH=/usr/bin/google-chrome
-BROWSERSHOT_CHROME_PATH=/usr/bin/chromium-browser
-
-# Mac Examples
-BROWSERSHOT_CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 ```
 
 **Testing Browsershot:**
@@ -292,13 +247,6 @@ storage/app/
 │   └── signatures/       # Signature images
 ├── temp/                 # Temporary processing files
 └── uploads/              # Excel/CSV uploads
-```
-
-**Permissions Setup (Linux/Mac):**
-```bash
-chmod -R 755 storage
-chmod -R 755 bootstrap/cache
-chown -R www-data:www-data storage bootstrap/cache
 ```
 
 ### Performance Optimization
@@ -830,7 +778,7 @@ php artisan about
 
 ## � Change Log & Version History
 
-### Version 2.1.0 - Advanced Certificate Numbering System (Latest)
+### Version 3.1.0 - Advanced Certificate Numbering System (Latest)
 **Release Date:** August 2025
 
 #### 🔢 **Advanced Certificate Numbering Features**
@@ -861,7 +809,7 @@ PKL-{AUTO:50} → PKL-050, PKL-051, PKL-052
 - **Migration Guide:** Panduan upgrade dari format lama ke format baru
 - **Troubleshooting:** Extended troubleshooting untuk certificate numbering issues
 
-### Version 2.0.0 - Dashboard Reorganization & AJAX Enhancement
+### Version 3.0.0 - Dashboard Reorganization & AJAX Enhancement
 **Release Date:** January 2025
 
 #### 🎯 Major Features Added
@@ -902,7 +850,7 @@ PKL-{AUTO:50} → PKL-050, PKL-051, PKL-052
 - **AJAX Pagination:** Fixed state management across page navigation
 - **Mobile Responsiveness:** Improved layout on smaller screens
 
-### Version 1.5.0 - Database Integration & Dual Source
+### Version 2.0.0 - Database Integration & Dual Source
 **Release Date:** December 2024
 
 #### 🎯 Features Added
