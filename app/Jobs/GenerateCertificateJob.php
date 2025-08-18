@@ -109,7 +109,7 @@ class GenerateCertificateJob implements ShouldQueue
             $remainingKey = "bulk_jobs_{$this->batchId}_remaining";
             $remaining = Cache::decrement($remainingKey);
     
-            Log::info("Sisa job batch {$this->batchId}: {$remaining}");
+            Log::info("Job completed for {$this->recipientName}. Remaining jobs for batch {$this->batchId}: {$remaining}");
             
             // Reconnect before database operation
             \DB::reconnect();

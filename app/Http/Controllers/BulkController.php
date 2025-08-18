@@ -9,6 +9,7 @@ use Maatwebsite\Excel\Facades\Excel;
 use App\Certificate;
 use App\CertificateTemplate;
 use App\Karyawan;
+use App\Divisi;
 use Illuminate\Support\Facades\File;
 use ZipArchive;
 use Illuminate\Support\Facades\Log;
@@ -32,14 +33,14 @@ class BulkController extends Controller
         $search = $request->get('search');
         $divisiFilter = $request->get('divisi_filter');
         
-        $karyawan = Karyawan::search($search)
+        $karyawan = Karyawan::with('divisi')->search($search)
             ->divisi($divisiFilter)
             ->orderBy('nama')
             ->paginate(10)
             ->appends(['search' => $search, 'divisi_filter' => $divisiFilter]);
         
         // Ambil daftar divisi untuk filter dropdown
-        $divisiList = Karyawan::distinct()->pluck('divisi')->sort();
+        $divisiList = Divisi::orderBy('inisial_unit')->pluck('inisial_unit', 'kode_divisi');
 
         // Kirim data ke view
         return view('generate-bulk', compact('templates', 'karyawan', 'divisiList', 'search', 'divisiFilter'));
@@ -147,15 +148,18 @@ class BulkController extends Controller
                     throw new \Exception("Gagal memproses file: " . $e->getMessage());
                 }
             } else {
-                // From database
-                $selectedKaryawan = Karyawan::whereIn('id', $request->selected_karyawan)->get();
+                // From database - menggunakan tabel karyawans dengan relasi divisi
+                $selectedKaryawan = Karyawan::with('divisi')->whereIn('id', $request->selected_karyawan)->get();
                 foreach ($selectedKaryawan as $karyawan) {
+                    // Ambil inisial_unit dari relasi divisi, fallback ke kode_divisi jika tidak ada
+                    $divisiDisplay = $karyawan->divisi ? $karyawan->divisi->inisial_unit : $karyawan->kode_divisi;
+                    
                     $participants[] = [
-                        $karyawan->nama,
+                        $karyawan->nama,           // nama dari tabel karyawans
                         '', // email - empty for database source
                         'Peserta', // default role
-                        $karyawan->npk_id,
-                        $karyawan->divisi,
+                        $karyawan->npk,            // npk dari tabel karyawans
+                        $divisiDisplay,            // inisial_unit dari tabel divisis (atau kode_divisi sebagai fallback)
                         '-', // nilai_1
                         '-', // nilai_2  
                         '-', // nilai_3
@@ -168,7 +172,18 @@ class BulkController extends Controller
             $counter = 1;
             $jobsToDispatch = []; // Collect jobs for batched dispatch
             
-            Log::info("Starting to process " . count($participants) . " participants");
+            // Count total participants first (excluding header for file source)
+            $totalParticipants = count($participants);
+            if ($request->data_source === 'file') {
+                $totalParticipants--; // Subtract header row
+            }
+            
+            Log::info("Starting to process {$totalParticipants} participants");
+            
+            // Initialize Cache counters BEFORE starting dispatch
+            Cache::put("bulk_jobs_{$batchId}_remaining", $totalParticipants, now()->addMinutes(30));
+            Cache::put("bulk_jobs_{$batchId}_total", $totalParticipants, now()->addMinutes(30));
+            Log::info("Cache initialized - remaining: {$totalParticipants}, total: {$totalParticipants}");
             
             // Reconnect database before processing participants
             \DB::reconnect();
@@ -294,20 +309,20 @@ class BulkController extends Controller
             
             Log::info("All {$jobCount} jobs dispatched successfully for batch {$batchId}");
 
-            Cache::put("bulk_jobs_{$batchId}_remaining", $jobCount, now()->addMinutes(30));
-            Cache::put("bulk_jobs_{$batchId}_total", $jobCount, now()->addMinutes(30));
-            
             // Reconnect to database before creating batch record
             \DB::reconnect();
             
             // Create CertificateBatch record in database
+            $totalFromCache = Cache::get("bulk_jobs_{$batchId}_total", $jobCount);
             CertificateBatch::create([
                 'batch_id' => $batchId,
                 'event_name' => $request->event_name,
-                'total_jobs' => $jobCount,
+                'total_jobs' => $totalFromCache,
                 'completed_jobs' => 0,
                 'is_zipped' => false,
             ]);
+            
+            Log::info("CertificateBatch created: total_jobs={$totalFromCache}, dispatched_jobs={$jobCount}");
             
 
 
@@ -460,11 +475,11 @@ class BulkController extends Controller
     {
         $request->validate([
             'nama' => 'required|string|max:25',
-            'npk_id' => 'required|string|max:50|unique:karyawan,npk_id',
-            'divisi' => 'required|string|max:100',
+            'npk' => 'required|string|max:50|unique:karyawans,npk',
+            'kode_divisi' => 'required|string|max:100',
         ]);
 
-        Karyawan::create($request->only(['nama', 'npk_id', 'divisi']));
+        Karyawan::create($request->only(['nama', 'npk', 'kode_divisi']));
 
         return response()->json(['success' => true, 'message' => 'Karyawan berhasil ditambahkan']);
     }
@@ -478,11 +493,11 @@ class BulkController extends Controller
         
         $request->validate([
             'nama' => 'required|string|max:25',
-            'npk_id' => 'required|string|max:50|unique:karyawan,npk_id,' . $id,
-            'divisi' => 'required|string|max:100',
+            'npk' => 'required|string|max:50|unique:karyawans,npk,' . $id,
+            'kode_divisi' => 'required|string|max:100',
         ]);
 
-        $karyawan->update($request->only(['nama', 'npk_id', 'divisi']));
+        $karyawan->update($request->only(['nama', 'npk', 'kode_divisi']));
 
         return response()->json(['success' => true, 'message' => 'Karyawan berhasil diupdate']);
     }
@@ -507,14 +522,14 @@ class BulkController extends Controller
         $divisiFilter = $request->get('divisi_filter');
         $page = $request->get('page', 1);
         
-        $karyawan = Karyawan::search($search)
+        $karyawan = Karyawan::with('divisi')->search($search)
             ->divisi($divisiFilter)
             ->orderBy('nama')
             ->paginate(10, ['*'], 'page', $page)
             ->appends(['search' => $search, 'divisi_filter' => $divisiFilter]);
         
         // Ambil daftar divisi untuk filter dropdown
-        $divisiList = Karyawan::distinct()->pluck('divisi')->sort();
+        $divisiList = Divisi::orderBy('inisial_unit')->pluck('inisial_unit', 'kode_divisi');
 
         return response()->json([
             'success' => true,

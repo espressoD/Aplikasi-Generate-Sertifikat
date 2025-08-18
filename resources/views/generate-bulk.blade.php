@@ -144,8 +144,8 @@
                                     <div class="col-md-3">
                                         <select class="form-control" id="filter-divisi">
                                             <option value="">Semua Divisi</option>
-                                            @foreach($divisiList as $divisi)
-                                                <option value="{{ $divisi }}" {{ $divisiFilter == $divisi ? 'selected' : '' }}>{{ $divisi }}</option>
+                                            @foreach($divisiList as $kode => $nama)
+                                                <option value="{{ $kode }}" {{ $divisiFilter == $kode ? 'selected' : '' }}>{{ $nama }}</option>
                                             @endforeach
                                         </select>
                                     </div>
@@ -190,14 +190,14 @@
                                                         <input type="checkbox" name="selected_karyawan[]" value="{{ $k->id }}" class="karyawan-checkbox">
                                                     </td>
                                                     <td>{{ $k->nama }}</td>
-                                                    <td>{{ $k->npk_id }}</td>
-                                                    <td>{{ $k->divisi }}</td>
+                                                    <td>{{ $k->npk }}</td>
+                                                    <td>{{ $k->divisi->inisial_unit ?? $k->kode_divisi }}</td>
                                                     <td>
                                                         <button type="button" class="btn btn-xs btn-warning edit-karyawan-btn" 
                                                                 data-id="{{ $k->id }}" 
                                                                 data-nama="{{ $k->nama }}" 
-                                                                data-npk="{{ $k->npk_id }}" 
-                                                                data-divisi="{{ $k->divisi }}">
+                                                                data-npk="{{ $k->npk }}" 
+                                                                data-divisi="{{ $k->kode_divisi }}">
                                                             <i class="fas fa-edit"></i>
                                                         </button>
                                                         <button type="button" class="btn btn-xs btn-danger delete-karyawan-btn" data-id="{{ $k->id }}">
@@ -816,14 +816,14 @@
                             <input type="checkbox" name="selected_karyawan[]" value="${karyawan.id}" class="karyawan-checkbox" ${checkedAttr}>
                         </td>
                         <td>${karyawan.nama}</td>
-                        <td>${karyawan.npk_id}</td>
-                        <td>${karyawan.divisi}</td>
+                        <td>${karyawan.npk}</td>
+                        <td>${karyawan.divisi ? karyawan.divisi.inisial_unit : karyawan.kode_divisi}</td>
                         <td>
                             <button type="button" class="btn btn-xs btn-warning edit-karyawan-btn" 
                                     data-id="${karyawan.id}" 
                                     data-nama="${karyawan.nama}" 
-                                    data-npk="${karyawan.npk_id}" 
-                                    data-divisi="${karyawan.divisi}">
+                                    data-npk="${karyawan.npk}" 
+                                    data-divisi="${karyawan.kode_divisi}">
                                 <i class="fas fa-edit"></i>
                             </button>
                             <button type="button" class="btn btn-xs btn-danger delete-karyawan-btn" data-id="${karyawan.id}">
@@ -906,10 +906,12 @@
         const currentValue = selectedDivisi || select.val();
         
         let html = '<option value="">Semua Divisi</option>';
-        divisiList.forEach(function(divisi) {
-            const selected = divisi === currentValue ? 'selected' : '';
-            html += `<option value="${divisi}" ${selected}>${divisi}</option>`;
-        });
+        
+        // divisiList sekarang adalah object dengan kode_divisi sebagai key dan inisial_unit sebagai value
+        for (const [kode, nama] of Object.entries(divisiList)) {
+            const selected = kode === currentValue ? 'selected' : '';
+            html += `<option value="${kode}" ${selected}>${nama}</option>`;
+        }
         
         select.html(html);
     }
@@ -1028,8 +1030,8 @@
 
             const data = {
                 nama: $('#karyawan-nama').val(),
-                npk_id: $('#karyawan-npk').val(),
-                divisi: $('#karyawan-divisi').val(),
+                npk: $('#karyawan-npk').val(),
+                kode_divisi: $('#karyawan-divisi').val(),
                 _token: '{{ csrf_token() }}'
             };
 

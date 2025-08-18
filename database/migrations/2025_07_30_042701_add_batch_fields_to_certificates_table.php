@@ -14,11 +14,9 @@ class AddBatchFieldsToCertificatesTable extends Migration
     public function up()
     {
         Schema::table('certificates', function (Blueprint $table) {
-            $table->string('batch_id')->nullable()->after('certificate_number');
-            $table->string('pdf_path')->nullable()->after('batch_id');
+            // Hanya tambah kolom yang belum ada (batch_id dan pdf_path sudah ada dari migration sebelumnya)
             $table->longText('participant_data')->nullable()->after('pdf_path');
             $table->longText('template_data')->nullable()->after('participant_data');
-            // Remove the change() method to avoid doctrine/dbal issues
         });
     }
 
@@ -30,7 +28,8 @@ class AddBatchFieldsToCertificatesTable extends Migration
     public function down()
     {
         Schema::table('certificates', function (Blueprint $table) {
-            $table->dropColumn(['batch_id', 'pdf_path', 'participant_data', 'template_data']);
+            // Hanya drop kolom yang ditambahkan di migration ini
+            $table->dropColumn(['participant_data', 'template_data']);
         });
     }
 }
