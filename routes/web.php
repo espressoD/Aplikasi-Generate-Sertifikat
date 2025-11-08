@@ -44,6 +44,9 @@ Route::get('/certificate/{certificate}/download', [CertificateController::class,
 Route::post('/templates', [CertificateTemplateController::class, 'store'])->name('templates.store');
 Route::put('/templates/{template}', [CertificateTemplateController::class, 'update'])->name('templates.update');
 Route::delete('/templates/{template}', [CertificateTemplateController::class, 'destroy'])->name('templates.destroy');
+// Design settings endpoints
+Route::get('/templates/{template}/design', [CertificateTemplateController::class, 'getDesign'])->name('templates.design.get');
+Route::post('/templates/{template}/design', [CertificateTemplateController::class, 'saveDesign'])->name('templates.design.save');
 
 // Progress polling
 //Route::get('/progress-status/{batchId}', [ProgressController::class, 'check']);
