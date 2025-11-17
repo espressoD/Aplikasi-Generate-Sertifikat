@@ -12,49 +12,19 @@
 {{-- Bagian Form Input Data --}}
 <div class="row">
     <div class="col-lg-12">
-        @if ($errors->any())
-            <div class="alert alert-danger alert-dismissible">
-                <button type="button" class="close" data-dismiss="alert" aria-hidden="true">×</button>
-                <h5><i class="icon fas fa-ban"></i> Terjadi Kesalahan!</h5>
-                <ul>
-                    @foreach ($errors->all() as $error)
-                        <li>{{ $error }}</li>
-                    @endforeach
-                </ul>
-            </div>
-        @endif
-
-        {{-- Menampilkan pesan sukses setelah menyimpan template --}}
-        @if (session('success'))
-            <div class="alert alert-success alert-dismissible">
-                <button type="button" class="close" data-dismiss="alert" aria-hidden="true">×</button>
-                <h5><i class="icon fas fa-check"></i> Berhasil!</h5>
-                {{ session('success') }}
-            </div>
-        @endif
-
         <div class="card card-primary">
             <div class="card-header">
                 <h3 class="card-title">Langkah 1: Pilih Sumber Data & Generate</h3>
             </div>
             <form id="main-form" action="{{ route('certificates.bulk.download') }}" method="POST" enctype="multipart/form-data">
                 @csrf
-                <input type="hidden" name="template_json" id="template_json">
-                <!-- Hidden form data fields - akan diisi dari sidebar -->
-                <input type="hidden" name="certificate_type" id="hidden_certificate_type">
-                <input type="hidden" name="event_name" id="hidden_event_name">
-                <input type="hidden" name="certificate_number_prefix" id="hidden_certificate_number_prefix">
-                <input type="hidden" name="start_date" id="hidden_start_date">
-                <input type="hidden" name="end_date" id="hidden_end_date">
-                <input type="hidden" name="signing_place" id="hidden_signing_place">
-                <input type="hidden" name="signing_date" id="hidden_signing_date">
-                <input type="hidden" name="descriptions[0]" id="hidden_description_1">
                 <input type="hidden" name="descriptions[1]" id="hidden_description_2">
                 <input type="hidden" name="descriptions[2]" id="hidden_description_3">
                 <input type="hidden" name="signature_count" id="hidden_signature_count">
                 @for ($i = 0; $i < 3; $i++)
-                    <input type="hidden" name="signatures[{{ $i }}][title]" id="hidden_signature_title_{{ $i }}">
-                    <input type="hidden" name="signatures[{{ $i }}][image]" id="hidden_signature_image_{{ $i }}">
+                    <input type="hidden" name="signatures[{{ $i }}][title]" id="hidden_signatures_{{ $i }}_title">
+                    <input type="hidden" name="signatures[{{ $i }}][name]" id="hidden_signatures_{{ $i }}_name">
+                    <input type="hidden" name="signatures[{{ $i }}][image]" id="hidden_signatures_{{ $i }}_image">
                 @endfor
                 
                 <div class="card-body">
@@ -262,145 +232,6 @@
         <h3 class="card-title">Langkah 3: Desain Template Sertifikat</h3>
     </div>
     <div class="card-body">
-        <!-- Toolbar Formatting Persisten -->
-        <div id="formatting-toolbar" class="card mb-3">
-            <div class="card-header bg-info text-white">
-                <h5 class="mb-0"><i class="fas fa-paint-brush mr-2"></i>Toolbar Formatting</h5>
-                <small><i class="fas fa-info-circle mr-1"></i>Pilih teks pada canvas untuk mengaktifkan kontrol formatting</small>
-            </div>
-            <div class="card-body">
-                <div class="row align-items-center">
-                    <!-- Undo/Redo -->
-                    <div class="col-auto">
-                        <div class="btn-group">
-                            <button id="toolbar-undo" class="btn btn-outline-secondary" title="Undo" disabled>
-                                <i class="fas fa-undo"></i>
-                            </button>
-                            <button id="toolbar-redo" class="btn btn-outline-secondary" title="Redo" disabled>
-                                <i class="fas fa-redo"></i>
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <!-- Font Controls -->
-                    <div class="col-auto">
-                        <label class="font-weight-bold mr-2">Font:</label>
-                        <select id="toolbar-font-family" class="form-control d-inline-block" style="width: 150px;" disabled>
-                            <option value="Arial">Arial</option>
-                            <option value="Helvetica">Helvetica</option>
-                            <option value="Times New Roman">Times New Roman</option>
-                            <option value="Georgia">Georgia</option>
-                            <option value="Verdana">Verdana</option>
-                            <option value="Tahoma">Tahoma</option>
-                            <option value="Courier New">Courier New</option>
-                        </select>
-                    </div>
-                    
-                    <div class="col-auto">
-                        <!-- ✅ Font Size dengan +/- Buttons untuk increment/decrement relatif -->
-                        <div class="input-group" style="width: 120px;">
-                            <div class="input-group-prepend">
-                                <button id="font-size-decrease" class="btn btn-outline-secondary btn-sm" type="button" title="Kurangi 1px" disabled>
-                                    <i class="fas fa-minus"></i>
-                                </button>
-                            </div>
-                            <input id="toolbar-font-size" type="number" class="form-control form-control-sm text-center" 
-                                   value="24" min="6" max="200" title="Ukuran Font" disabled style="height: 38px;">
-                            <div class="input-group-append">
-                                <button id="font-size-increase" class="btn btn-outline-secondary btn-sm" type="button" title="Tambah 1px" disabled>
-                                    <i class="fas fa-plus"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="col-auto">
-                        <!-- ✅ WRAPPER DIV untuk color picker dengan split background -->
-                        <div id="color-picker-wrapper" style="position: relative; width: 50px; height: 38px; display: inline-block;">
-                            <input id="toolbar-color" type="color" class="form-control" 
-                                   style="width: 100%; height: 100%; padding: 0; position: relative; z-index: 2; opacity: 0.01; cursor: pointer;" 
-                                   title="Warna Teks" disabled>
-                            <div id="color-visual" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-                                 border: 1px solid #ced4da; border-radius: 0.25rem; pointer-events: none; z-index: 1; background: #000000;"></div>
-                        </div>
-                    </div>
-                    
-                    <!-- Text Style -->
-                    <div class="col-auto">
-                        <div class="btn-group">
-                            <button id="toolbar-bold" class="btn btn-outline-secondary" title="Bold" disabled>
-                                <i class="fas fa-bold"></i>
-                            </button>
-                            <button id="toolbar-italic" class="btn btn-outline-secondary" title="Italic" disabled>
-                                <i class="fas fa-italic"></i>
-                            </button>
-                            <button id="toolbar-underline" class="btn btn-outline-secondary" title="Underline" disabled>
-                                <i class="fas fa-underline"></i>
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <!-- Alignment -->
-                    <div class="col-auto">
-                        <div class="btn-group">
-                            <button id="toolbar-align-left" class="btn btn-outline-secondary" title="Rata Kiri" disabled>
-                                <i class="fas fa-align-left"></i>
-                            </button>
-                            <button id="toolbar-align-center" class="btn btn-outline-secondary" title="Rata Tengah" disabled>
-                                <i class="fas fa-align-center"></i>
-                            </button>
-                            <button id="toolbar-align-right" class="btn btn-outline-secondary" title="Rata Kanan" disabled>
-                                <i class="fas fa-align-right"></i>
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <!-- Line Height -->
-                    <div class="col-auto">
-                        <label class="font-weight-bold mr-1">Spasi:</label>
-                        <input id="toolbar-line-height" type="number" class="form-control" style="width: 70px;" 
-                               value="1.2" min="0.5" max="3" step="0.1" title="Line Height" disabled>
-                    </div>
-                    
-                    <!-- Object Align -->
-                    <div class="col-auto">
-                        <div class="btn-group" role="group" aria-label="Object Align">
-                            <button id="obj-align-left" class="btn btn-outline-secondary" title="Align Left" disabled>
-                                <i class="fas fa-align-left"></i>
-                            </button>
-                            <button id="obj-align-center" class="btn btn-outline-secondary" title="Align Center" disabled>
-                                <i class="fas fa-align-center"></i>
-                            </button>
-                            <button id="obj-align-right" class="btn btn-outline-secondary" title="Align Right" disabled>
-                                <i class="fas fa-align-right"></i>
-                            </button>
-                            <button id="obj-align-top" class="btn btn-outline-secondary" title="Align Top" disabled>
-                                <i class="fas fa-arrow-up"></i>
-                            </button>
-                            <button id="obj-align-middle" class="btn btn-outline-secondary" title="Align Middle" disabled>
-                                <i class="fas fa-arrows-alt-v"></i>
-                            </button>
-                            <button id="obj-align-bottom" class="btn btn-outline-secondary" title="Align Bottom" disabled>
-                                <i class="fas fa-arrow-down"></i>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Distribute -->
-                    <div class="col-auto">
-                        <div class="btn-group" role="group" aria-label="Distribute">
-                            <button id="obj-distribute-h" class="btn btn-outline-secondary" title="Distribute Horizontally" disabled>
-                                <i class="fas fa-grip-lines-horizontal"></i>
-                            </button>
-                            <button id="obj-distribute-v" class="btn btn-outline-secondary" title="Distribute Vertically" disabled>
-                                <i class="fas fa-grip-lines"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
         <div class="mb-3">
             <div class="form-group">
                 <label for="bg-upload">Unggah Gambar Latar</label>
@@ -413,7 +244,6 @@
             <div class="col-lg-8">
                 <div class="mb-3">
                     <button id="add-text" class="btn btn-default"><i class="fas fa-font"></i> Tambah Teks</button>
-                    {{-- PERUBAHAN: Dropdown diubah menjadi "Sisipkan Elemen" --}}
                     <div class="btn-group">
                         <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown"><i class="fas fa-puzzle-piece"></i> Sisipkan Elemen</button>
                         <div class="dropdown-menu" id="insert-menu">
@@ -426,6 +256,16 @@
                             <a class="dropdown-item signature-block-item" href="#" data-index="2">Blok Penandatangan #3</a>
                         </div>
                     </div>
+
+                    <!-- Compact Undo/Redo (visual only) placed to the right of the "Sisipkan Elemen" dropdown -->
+                    <div id="compact-undo-redo" class="ml-2 d-inline-flex align-items-center" role="group" aria-label="Undo Redo">
+                        <button id="toolbar-undo" type="button" class="btn btn-light btn-sm compact-tool" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>
+                            <i class="fas fa-undo" aria-hidden="true"></i>
+                        </button>
+                        <button id="toolbar-redo" type="button" class="btn btn-light btn-sm compact-tool ml-1" title="Redo (Ctrl+Y)" aria-label="Redo" disabled>
+                            <i class="fas fa-redo" aria-hidden="true"></i>
+                        </button>
+                    </div>
                     <button id="remove-element" class="btn btn-danger float-right"><i class="fas fa-trash"></i> Hapus Elemen</button>
                 </div>
                 <div style="border: 1px solid #ccc; width: 100%; max-width: 1123px; height: 794px; margin: auto; position: relative;">
@@ -434,17 +274,17 @@
                         <div class="floating-pill">
                             <div class="pill-row pill-formatting">
                                 <div id="floating-formatting-group" class="floating-formatting">
-                                    <div class="pill-item pill-select" id="floating-font-family">
+                                    <div class="pill-item pill-select dropdown-host" id="floating-font-family">
                                         <span class="value">Arial</span>
                                         <i class="fas fa-chevron-down"></i>
                                     </div>
                                     <span class="pill-divider"></span>
-                                    <div class="pill-item pill-select" id="floating-font-size">
+                                    <div class="pill-item pill-select dropdown-host" id="floating-font-size">
                                         <span class="value">24</span>
                                         <i class="fas fa-chevron-down"></i>
                                     </div>
                                     <span class="pill-divider"></span>
-                                    <div class="pill-item" id="floating-line-height">
+                                    <div class="pill-item dropdown-host" id="floating-line-height">
                                         <i class="fas fa-arrows-alt-v"></i>
                                         <span class="value">1.20</span>
                                     </div>
@@ -481,26 +321,38 @@
                                     </div>
                                     <span class="pill-divider"></span>
                                     <div class="pill-button-group" id="floating-style-buttons">
-                                        <button type="button" class="pill-button preview-only" id="floating-bold" title="Bold (preview)">
+                                        <button type="button" class="pill-button" id="floating-bold" title="Bold">
                                             <i class="fas fa-bold"></i>
                                         </button>
-                                        <button type="button" class="pill-button preview-only" id="floating-italic" title="Italic (preview)">
+                                        <button type="button" class="pill-button" id="floating-italic" title="Italic">
                                             <i class="fas fa-italic"></i>
                                         </button>
-                                        <button type="button" class="pill-button preview-only" id="floating-underline" title="Underline (preview)">
+                                        <button type="button" class="pill-button" id="floating-underline" title="Underline">
                                             <i class="fas fa-underline"></i>
                                         </button>
                                     </div>
                                     <span class="pill-divider"></span>
-                                    <div class="pill-button-group" id="floating-align-buttons">
-                                        <button type="button" class="pill-button preview-only" id="floating-align-left" title="Rata kiri (preview)">
+                                    <div class="pill-button-group align-group" id="floating-align-horizontal">
+                                        <button type="button" class="pill-button floating-align-button" id="floating-align-left" data-align="left" title="Rata kiri">
                                             <i class="fas fa-align-left"></i>
                                         </button>
-                                        <button type="button" class="pill-button preview-only" id="floating-align-center" title="Rata tengah (preview)">
+                                        <button type="button" class="pill-button floating-align-button" id="floating-align-center" data-align="center" title="Rata tengah">
                                             <i class="fas fa-align-center"></i>
                                         </button>
-                                        <button type="button" class="pill-button preview-only" id="floating-align-right" title="Rata kanan (preview)">
+                                        <button type="button" class="pill-button floating-align-button" id="floating-align-right" data-align="right" title="Rata kanan">
                                             <i class="fas fa-align-right"></i>
+                                        </button>
+                                    </div>
+                                    <span class="pill-divider align-vertical-divider is-hidden"></span>
+                                    <div class="pill-button-group align-group align-vertical is-hidden" id="floating-align-vertical">
+                                        <button type="button" class="pill-button floating-align-button" id="floating-align-top" data-align="top" title="Sejajarkan ke atas">
+                                            <i class="fas fa-arrow-up"></i>
+                                        </button>
+                                        <button type="button" class="pill-button floating-align-button" id="floating-align-middle" data-align="middle" title="Sejajarkan ke tengah vertikal">
+                                            <i class="fas fa-arrows-alt-v"></i>
+                                        </button>
+                                        <button type="button" class="pill-button floating-align-button" id="floating-align-bottom" data-align="bottom" title="Sejajarkan ke bawah">
+                                            <i class="fas fa-arrow-down"></i>
                                         </button>
                                     </div>
                                 </div>
@@ -751,6 +603,11 @@
         }
     }
     
+    /* Utility */
+    .is-hidden {
+        display: none !important;
+    }
+
     /* 🎨 FLOATING TOOLBAR STYLES */
     #floating-toolbar {
         position: absolute;
@@ -763,8 +620,9 @@
         border-radius: 32px;
         box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
         padding: 16px 20px;
-        min-width: 420px;
-        max-width: 760px;
+        min-width: 0;
+        width: auto;
+        max-width: min(880px, calc(100% - 48px));
     }
 
     #floating-toolbar .floating-pill {
@@ -772,14 +630,15 @@
         flex-direction: column;
         align-items: stretch;
         gap: 16px;
-        width: 100%;
+        width: auto;
     }
 
     .pill-row {
         display: flex;
         align-items: center;
         gap: 16px;
-        width: 100%;
+        flex-wrap: wrap;
+        width: auto;
     }
 
     .pill-row.pill-formatting {
@@ -788,7 +647,7 @@
     }
 
     .pill-row.pill-formatting #floating-formatting-group {
-        flex: 1 1 auto;
+        flex: 0 1 auto;
     }
 
     #floating-formatting-group {
@@ -796,6 +655,8 @@
         align-items: center;
         gap: 16px;
         flex-wrap: wrap;
+        min-width: 0;
+        flex: 0 1 auto;
     }
 
     #floating-formatting-group.is-hidden {
@@ -805,6 +666,7 @@
     #floating-group-row {
         display: none;
         justify-content: flex-start;
+        width: 100%;
     }
 
     #floating-group-row.active {
@@ -845,6 +707,13 @@
 
     .pill-item .value {
         font-weight: 600;
+    }
+
+    .pill-item.pill-select .value {
+        max-width: 120px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     .pill-item.mixed .value {
@@ -891,6 +760,10 @@
         gap: 6px;
     }
 
+    .pill-button-group.align-group {
+        flex-wrap: nowrap;
+    }
+
     .pill-button {
         border: none;
         background: transparent;
@@ -918,10 +791,6 @@
 
     .pill-button.color-trigger .color-dot {
         margin-right: 0;
-    }
-
-    .pill-button.preview-only {
-        pointer-events: none;
     }
 
     .pill-button i {
@@ -959,6 +828,293 @@
 
     .floating-group-actions .pill-button:hover {
         background: #e2e8f0;
+    }
+
+    #floating-align-vertical {
+        flex-wrap: nowrap;
+    }
+
+    .floating-popover {
+        position: absolute;
+        min-width: 220px;
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        box-shadow: 0 16px 36px rgba(15, 23, 42, 0.18);
+        padding: 14px 16px;
+        z-index: 4000;
+        display: none;
+        top: calc(100% + 12px);
+        left: 50%;
+        transform: translateX(-50%);
+    }
+
+    .floating-popover.active {
+        display: block;
+    }
+
+    .floating-popover .popover-title {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #1f2937;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 10px;
+    }
+
+    .floating-popover .popover-section + .popover-section {
+        margin-top: 12px;
+        padding-top: 10px;
+        border-top: 1px dashed #e2e8f0;
+    }
+
+    .floating-popover .recent-heading,
+    .floating-popover .all-heading {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 6px;
+    }
+
+    .floating-popover .search-input {
+        width: 100%;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        padding: 6px 10px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #1f2937;
+        margin-bottom: 10px;
+    }
+
+    .floating-popover .search-input:focus {
+        outline: none;
+        border-color: #2563eb;
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+    }
+
+    .floating-popover .recent-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 8px;
+    }
+
+    .floating-popover .option-grid.font-list {
+        max-height: 220px;
+        overflow-y: auto;
+        padding-right: 4px;
+    }
+
+    .floating-popover .option-grid.font-list::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .floating-popover .option-grid.font-list::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 6px;
+    }
+
+    .floating-popover .option-button.font-option {
+        justify-content: flex-start;
+        gap: 10px;
+        display: flex;
+        width: 100%;
+    }
+
+    .floating-popover .option-button.font-option .sample {
+        font-size: 0.78rem;
+    }
+
+    .floating-popover .option-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .floating-popover .option-button {
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        padding: 6px 10px;
+        background: #f8fafc;
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: #1f2937;
+        transition: all 0.2s ease;
+    }
+
+    .floating-popover .option-button:hover {
+        background: #e2e8f0;
+        border-color: #94a3b8;
+    }
+
+    .floating-popover .option-button.active {
+        background: #111827;
+        border-color: #111827;
+        color: #ffffff;
+        box-shadow: 0 6px 18px rgba(15, 23, 42, 0.25);
+    }
+
+    .floating-popover .option-button.mixed {
+        font-style: italic;
+        color: #6c7280;
+        border-style: dashed;
+    }
+
+    .floating-popover .input-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
+    }
+
+    .floating-popover .input-row input {
+        flex: 1;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        padding: 6px 8px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #1f2937;
+    }
+
+    .floating-popover .input-row input:focus {
+        outline: none;
+        border-color: #2563eb;
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+    }
+
+    /* Compact spin control styling (light outline) */
+    /* Segmented compact spin control (no gaps) */
+    .floating-popover .input-row .input-group {
+        display: flex;
+        align-items: center;
+        gap: 0;
+        overflow: hidden;
+        border-radius: 8px;
+        border: 1px solid #E6E9EE;
+        background: #FFFFFF;
+    }
+
+    .floating-popover .input-group .spin-button {
+        width: 36px !important;
+        height: 36px !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        background: #FFFFFF !important;
+        background-color: #FFFFFF !important;
+        border: none !important;
+        border-radius: 0 !important;
+        color: #0F172A !important;
+        font-size: 1.25rem !important;
+        font-weight: 700 !important;
+        line-height: 1 !important;
+        cursor: pointer !important;
+        transition: all 0.15s ease !important;
+        position: relative;
+        box-shadow: none !important;
+    }
+
+    .floating-popover .input-group .spin-button:hover {
+        background: #111827 !important;
+        background-color: #111827 !important;
+        color: #FFFFFF !important;
+        border-color: transparent !important;
+    }
+
+    .floating-popover .input-group .spin-button:active {
+        background: #0b1320 !important;
+        background-color: #0b1320 !important;
+        color: #FFFFFF !important;
+        transform: translateY(1px) !important;
+        border-color: transparent !important;
+    }
+
+    .floating-popover .input-group .spin-button:focus {
+        outline: none !important;
+        box-shadow: 0 0 0 4px rgba(17, 24, 39, 0.12) !important;
+        background: #FFFFFF !important;
+        color: #0F172A !important;
+    }
+
+    .floating-popover .input-group .spin-button:focus:hover {
+        background: #111827 !important;
+        color: #FFFFFF !important;
+        box-shadow: 0 0 0 4px rgba(17, 24, 39, 0.12) !important;
+    }
+
+    .floating-popover .input-group .spin-button:first-child {
+        border-right: 1px solid #E6E9EE !important;
+        border-top-left-radius: 7px !important;
+        border-bottom-left-radius: 7px !important;
+    }
+
+    .floating-popover .input-group .spin-button:last-child {
+        border-left: 1px solid #E6E9EE !important;
+        border-top-right-radius: 7px !important;
+        border-bottom-right-radius: 7px !important;
+    }
+
+    .floating-popover .input-row .form-control {
+        width: 48px;
+        padding: 6px 4px;
+        border: none;
+        background: #FFFFFF;
+        text-align: center;
+        font-weight: 700;
+        color: #0F172A;
+        font-size: 0.875rem;
+    }
+
+    .floating-popover .input-row .form-control:focus {
+        outline: none;
+        box-shadow: 0 0 0 4px rgba(17, 24, 39, 0.12);
+        position: relative;
+        z-index: 1;
+    }
+
+    /* Remove native number input arrows across browsers */
+    #floating-font-size-input,
+    #floating-line-height-input {
+        -moz-appearance: textfield;
+        appearance: none;
+        -webkit-appearance: none;
+        -webkit-touch-callout: none;
+    }
+
+    /* Webkit browsers */
+    #floating-font-size-input::-webkit-outer-spin-button,
+    #floating-font-size-input::-webkit-inner-spin-button,
+    #floating-line-height-input::-webkit-outer-spin-button,
+    #floating-line-height-input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+
+    .floating-popover .input-row button {
+        border: none;
+        border-radius: 8px;
+        padding: 6px 12px;
+        background: #2563eb;
+        color: #ffffff;
+        font-size: 0.78rem;
+        font-weight: 600;
+        transition: background 0.2s ease;
+    }
+
+    .floating-popover .input-row button:hover {
+        background: #1d4ed8;
+    }
+
+    .floating-popover .popover-note {
+        font-size: 0.7rem;
+        color: #6c7280;
+        margin-bottom: 8px;
     }
 
     #align-mode-toggle {
@@ -1003,6 +1159,11 @@
 
     .dropdown-host {
         position: relative;
+        z-index: 1;
+    }
+
+    .dropdown-host.open {
+        z-index: 4001;
     }
 
     .dropdown-host.open .color-dropdown {
@@ -1235,10 +1396,43 @@
         font-style: italic;
     }
     
-    /* Color picker with split background for mixed colors */
-    #toolbar-color {
-        transition: background 0.2s ease;
+    /* Compact Undo/Redo styles (for the new compact buttons next to "Sisipkan Elemen") */
+    #compact-undo-redo {
+        display: inline-flex !important;
+        vertical-align: middle;
     }
+
+    #compact-undo-redo .compact-tool {
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        box-shadow: none;
+        line-height: 1;
+        transition: background-color 0.12s ease, transform 0.06s ease;
+        border: 1px solid #e6e9ef;
+        background: #ffffff;
+    }
+    #compact-undo-redo .compact-tool i {
+        font-size: 14px;
+        color: #111827;
+    }
+    #compact-undo-redo .compact-tool:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+    }
+    #compact-undo-redo .compact-tool:not(:disabled):hover {
+        background: #f1f5f9;
+        transform: translateY(-1px);
+    }
+    .toolbar-inline { gap: 6px; }
+    @media (max-width: 576px) {
+        #compact-undo-redo .compact-tool { width: 40px; height: 40px; }
+    }
+
 </style>
 <script>
     // ========================================
@@ -1256,15 +1450,11 @@
                     placeholder: 'Masukkan nama acara atau pelatihan'
                 },
                 '@{{jenis_sertifikat}}': {
-                    title: 'Jenis Sertifikat', 
-                    type: 'select',
+                    title: 'Jenis Sertifikat',
+                    type: 'text',
                     field: 'certificate_type',
-                    options: [
-                        {value: 'PARTISIPASI', text: 'Partisipasi'},
-                        {value: 'KEPANITIAAN', text: 'Kepanitiaan'},
-                        {value: 'KEANGGOTAAN', text: 'Keanggotaan'},
-                        {value: 'PENGHARGAAN', text: 'Penghargaan'}
-                    ]
+                    placeholder: 'Contoh: Partisipasi',
+                    help: 'Isi label jenis sertifikat sesuai kebutuhan (mis. Partisipasi, Penghargaan).'
                 },
                 '@{{nomor_sertifikat}}': {
                     title: 'Format Nomor Sertifikat',
@@ -1308,12 +1498,63 @@
                     placeholder: 'Deskripsi kustom untuk placeholder 3'
                 }
             };
+
+            this.ensureMappingHiddenFields();
+        }
+
+        sanitizeFieldKey(field) {
+            if (!field) return '';
+            return field
+                .replace(/\]/g, '')
+                .replace(/\[/g, '_')
+                .replace(/_{2,}/g, '_')
+                .replace(/_$/g, '');
+        }
+
+        ensureHiddenField(field) {
+            if (!field) return $();
+            const key = this.sanitizeFieldKey(field);
+            let hidden = $(`input[type="hidden"][name="${field}"]`).first();
+            if (hidden.length) {
+                if (!hidden.attr('id')) {
+                    hidden.attr('id', `hidden_${key}`);
+                }
+                return hidden;
+            }
+
+            hidden = $(`#hidden_${key}`);
+            if (!hidden.length) {
+                const form = $('#main-form');
+                if (!form.length) {
+                    return $();
+                }
+                hidden = $('<input>', {
+                    type: 'hidden',
+                    id: `hidden_${key}`,
+                    name: field,
+                    value: ''
+                });
+                form.append(hidden);
+            }
+            return hidden;
+        }
+
+        ensureMappingHiddenFields() {
+            Object.values(this.placeholderMappings).forEach(mapping => {
+                if (!mapping) return;
+                if (mapping.type === 'composite' && Array.isArray(mapping.fields)) {
+                    mapping.fields.forEach(fieldConfig => this.ensureHiddenField(fieldConfig.field));
+                } else if (mapping.field) {
+                    this.ensureHiddenField(mapping.field);
+                }
+            });
         }
         
         showDefault() {
             this.hideAll();
             $('#sidebar-default').show();
             $('#sidebar-subtitle').text('Pilih elemen untuk mengedit properti');
+            this.currentSelection = null;
         }
         
         showPlaceholder(placeholderText) {
@@ -1324,6 +1565,14 @@
                 this.showDefault();
                 return;
             }
+
+            if (mapping.type === 'composite' && Array.isArray(mapping.fields)) {
+                mapping.fields.forEach(fieldConfig => this.ensureHiddenField(fieldConfig.field));
+            } else if (mapping.field) {
+                this.ensureHiddenField(mapping.field);
+            }
+
+            this.currentSelection = window.canvas ? window.canvas.getActiveObject() : null;
             
             let html = `<h6><i class="fas fa-tag mr-2"></i>${mapping.title}</h6>`;
             html += `<p class="text-muted small">Placeholder: <code>${placeholderText}</code></p>`;
@@ -1382,10 +1631,16 @@
         updateCanvasPlaceholder(placeholderText, mapping) {
             // ✅ PERBAIKAN: Pastikan canvas ada
             if (!window.canvas) return;
-            
-            const activeObject = window.canvas.getActiveObject();
-            if (!activeObject || !activeObject.isPlaceholder) return;
-            
+
+            let activeObject = window.canvas.getActiveObject();
+            if (!activeObject || !activeObject.isPlaceholder) {
+                if (this.currentSelection && this.currentSelection.isPlaceholder) {
+                    activeObject = this.currentSelection;
+                } else {
+                    return;
+                }
+            }
+
             let formattedText = '';
             
             if (mapping.type === 'composite') {
@@ -1418,7 +1673,14 @@
             
             // Update canvas text
             activeObject.set('text', formattedText);
-            window.canvas.renderAll();
+            if (typeof activeObject.setCoords === 'function') {
+                activeObject.setCoords();
+            }
+            if (typeof window.canvas.requestRenderAll === 'function') {
+                window.canvas.requestRenderAll();
+            } else {
+                window.canvas.renderAll();
+            }
         }
         
         // 🆕 HELPER: Format tanggal ke bahasa Indonesia
@@ -1534,6 +1796,7 @@
             
             $('#sidebar-signature').html(html).show();
             $('#sidebar-subtitle').text(`Properti: Tanda Tangan #${index + 1}`);
+            this.currentSelection = null;
             
             // Bind change events
             $('.sidebar-input').on('input change', (e) => {
@@ -1564,25 +1827,31 @@
         
         hideAll() {
             $('#sidebar-default, #sidebar-placeholder, #sidebar-text, #sidebar-signature, #sidebar-canvas').hide();
+            this.currentSelection = null;
         }
         
         getFieldValue(field) {
-            // Try to get from hidden field first
-            const hiddenField = $(`#hidden_${field.replace(/[\[\]]/g, '_').replace(/__/g, '_').replace(/_$/, '')}`);
+            if (!field) return '';
+            const hiddenField = this.ensureHiddenField(field);
             if (hiddenField.length) {
-                return hiddenField.val() || '';
+                const val = hiddenField.val();
+                if (val !== undefined && val !== null && val !== '') {
+                    return val;
+                }
             }
-            
+            // Try to get from hidden field first
             // Fallback to direct field
             const directField = $(`[name="${field}"]`);
             return directField.length ? directField.val() || '' : '';
         }
         
         updateHiddenField(field, value) {
+            if (!field) return;
+            const hiddenField = this.ensureHiddenField(field);
+            if (hiddenField.length) {
+                hiddenField.val(value);
+            }
             // Update hidden field
-            const hiddenFieldName = `hidden_${field.replace(/[\[\]]/g, '_').replace(/__/g, '_').replace(/_$/, '')}`;
-            $(`#${hiddenFieldName}`).val(value);
-            
             // Also update original field if exists
             $(`[name="${field}"]`).val(value);
         }
@@ -1697,19 +1966,19 @@
         }
         
         updateButtons() {
-            // Update undo button
-            if (this.undoStack.length > 1) {
-                $('#toolbar-undo').prop('disabled', false).removeClass('text-muted');
-            } else {
-                $('#toolbar-undo').prop('disabled', true).addClass('text-muted');
-            }
-            
-            // Update redo button
-            if (this.redoStack.length > 0) {
-                $('#toolbar-redo').prop('disabled', false).removeClass('text-muted');
-            } else {
-                $('#toolbar-redo').prop('disabled', true).addClass('text-muted');
-            }
+                // Update undo button (new compact controls)
+                if (this.undoStack.length > 1) {
+                    $('#toolbar-undo').prop('disabled', false).removeClass('text-muted');
+                } else {
+                    $('#toolbar-undo').prop('disabled', true).addClass('text-muted');
+                }
+
+                // Update redo button (new compact controls)
+                if (this.redoStack.length > 0) {
+                    $('#toolbar-redo').prop('disabled', false).removeClass('text-muted');
+                } else {
+                    $('#toolbar-redo').prop('disabled', true).addClass('text-muted');
+                }
         }
         
         clear() {
@@ -1721,6 +1990,10 @@
     }
     
     $(document).ready(function() {
+        // Minimize/collapse the main navigation by default for this page.
+        // AdminLTE responds to the `sidebar-collapse` class on <body>.
+        try { document.body.classList.add('sidebar-collapse'); } catch (err) { /* ignore on SSR or odd contexts */ }
+
         const canvas = window.canvas=new fabric.Canvas('certificate-canvas', {
             width: 1123, // A4 landscape width: 29.7cm at 96 DPI
             height: 794, // A4 landscape height: 21cm at 96 DPI
@@ -1800,6 +2073,34 @@
         '#8B4513', '#FFA500', '#800080', '#008080', '#008000', '#FFD700', '#A52A2A', '#2F4F4F',
         '#1D4ED8', '#F97316'
     ];
+
+    const FLOATING_FONT_FAMILIES = [
+        'Arial',
+        'Helvetica',
+        'Times New Roman',
+        'Georgia',
+        'Verdana',
+        'Tahoma',
+        'Courier New',
+        'Palatino Linotype',
+        'Garamond',
+        'Bookman Old Style',
+        'Comic Sans MS',
+        'Trebuchet MS'
+    ];
+
+    let floatingRecentFonts = [];
+
+    const FLOATING_FONT_SIZE_PRESETS = [8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 64, 72];
+
+    const FLOATING_LINE_HEIGHT_PRESETS = [0.8, 1.0, 1.2, 1.35, 1.5, 1.75, 2.0, 2.5, 3.0];
+
+    const floatingPopoverState = {
+        isOpen: false,
+        type: null,
+        anchor: null,
+        canvas: null
+    };
 
     // ========== FUNCTION DEFINITIONS ==========
 
@@ -2125,196 +2426,17 @@
         // Initialize sidebar with default state
         window.contextualSidebar.showDefault();
         
-        // 🎯 INISIALISASI: Set toolbar ke state default (disabled)
-        disableFormattingToolbar();
-        
-        // 🔄 Toolbar Undo/Redo Integration
+        // 🔄 Toolbar Undo/Redo Integration (bound to compact buttons)
         $('#toolbar-undo').on('click', () => {
             if (window.undoRedoManager) {
                 window.undoRedoManager.undo();
             }
         });
-        
+
         $('#toolbar-redo').on('click', () => {
             if (window.undoRedoManager) {
                 window.undoRedoManager.redo();
             }
-        });
-        
-        // 🔄 SINKRONISASI ARAH KEDUA: Toolbar -> Canvas
-        
-        // Button formatting controls (Bold, Italic, Underline, Alignment)
-        $('#toolbar-bold, #toolbar-italic, #toolbar-underline').on('click', function() {
-            const activeObject = canvas.getActiveObject();
-            if (!activeObject) return;
-            
-            const action = $(this).attr('id').replace('toolbar-', '');
-            
-            // ✅ SMART TOGGLE LOGIC - Opsi A
-            // Detect current common state
-            const textObjects = getTextObjectsFromSelection(activeObject);
-            let commonState = null;
-            
-            if (action === 'bold') {
-                commonState = getCommonBooleanProperty(textObjects, 'fontWeight', 'bold');
-            } else if (action === 'italic') {
-                commonState = getCommonBooleanProperty(textObjects, 'fontStyle', 'italic');
-            } else if (action === 'underline') {
-                commonState = getCommonBooleanProperty(textObjects, 'underline', true);
-            }
-            
-            // 🐛 DEBUG LOGGING - WILL BE REMOVED AFTER TESTING
-            console.log('=== FORMAT TOGGLE DEBUG ===');
-            console.log('Action:', action);
-            console.log('Text Objects Count:', textObjects.length);
-            console.log('Common State:', commonState);
-            textObjects.forEach((obj, idx) => {
-                console.log(`Object ${idx}:`, {
-                    fontWeight: obj.fontWeight,
-                    fontStyle: obj.fontStyle,
-                    underline: obj.underline
-                });
-            });
-            console.log('=========================');
-            
-            // Apply with smart logic
-            applyToAllTextObjects(activeObject, (textObj) => {
-                applyTextFormatting(textObj, action, canvas, true, commonState);
-            });
-            
-            // Update button state after applying
-            setTimeout(() => {
-                syncCanvasToToolbar(activeObject);
-            }, 10);
-        });
-        
-        // Alignment controls
-        $('#toolbar-align-left, #toolbar-align-center, #toolbar-align-right').on('click', function() {
-            const activeObject = canvas.getActiveObject();
-            if (!activeObject) return;
-            
-            const action = $(this).attr('id').replace('toolbar-', '');
-            
-            // 🆕 Apply to all text objects in selection
-            applyToAllTextObjects(activeObject, (textObj) => {
-                applyTextFormatting(textObj, action, canvas);
-            });
-            
-            // Update alignment button states
-            $('.btn-group button[id^="toolbar-align-"]').removeClass('active');
-            $(this).addClass('active');
-        });
-        
-        // Direct input controls (Font Family, Size, Color, Line Height)
-        $('#toolbar-font-family').on('change', function() {
-            const activeObject = canvas.getActiveObject();
-            if (!activeObject) return;
-            
-            const fontFamily = $(this).val();
-            if (!fontFamily) return; // Ignore if "Mixed" selected
-            
-            // 🆕 Apply to all text objects in selection
-            applyToAllTextObjects(activeObject, (textObj) => {
-                textObj.set('fontFamily', fontFamily);
-            });
-            
-            canvas.renderAll();
-        });
-        
-        $('#toolbar-font-size').on('input change', function() {
-            const activeObject = canvas.getActiveObject();
-            if (!activeObject) return;
-            
-            const size = parseInt($(this).val());
-            if (isNaN(size) || size < 6 || size > 200) return;
-            
-            // 🆕 Apply to all text objects in selection
-            applyToAllTextObjects(activeObject, (textObj) => {
-                // Reset scale and apply new fontSize
-                const currentScale = textObj.scaleY || 1;
-                textObj.set({
-                    fontSize: size / currentScale,
-                    scaleY: currentScale
-                });
-            });
-            
-            canvas.renderAll();
-        });
-        
-        // ✅ Font Size Increase Button (+1px relatif)
-        $('#font-size-increase').on('click', function() {
-            const activeObject = canvas.getActiveObject();
-            if (!activeObject) return;
-            
-            applyToAllTextObjects(activeObject, (textObj) => {
-                const currentEffective = getEffectiveFontSize(textObj);
-                const newSize = Math.min(200, currentEffective + 1); // Max 200px
-                
-                const currentScale = textObj.scaleY || 1;
-                textObj.set({
-                    fontSize: newSize / currentScale,
-                    scaleY: currentScale
-                });
-            });
-            
-            canvas.renderAll();
-            
-            // Update toolbar display
-            setTimeout(() => syncCanvasToToolbar(activeObject), 10);
-        });
-        
-        // ✅ Font Size Decrease Button (-1px relatif)
-        $('#font-size-decrease').on('click', function() {
-            const activeObject = canvas.getActiveObject();
-            if (!activeObject) return;
-            
-            applyToAllTextObjects(activeObject, (textObj) => {
-                const currentEffective = getEffectiveFontSize(textObj);
-                const newSize = Math.max(6, currentEffective - 1); // Min 6px
-                
-                const currentScale = textObj.scaleY || 1;
-                textObj.set({
-                    fontSize: newSize / currentScale,
-                    scaleY: currentScale
-                });
-            });
-            
-            canvas.renderAll();
-            
-            // Update toolbar display
-            setTimeout(() => syncCanvasToToolbar(activeObject), 10);
-        });
-        
-        $('#toolbar-color').on('change', function() {
-            const activeObject = canvas.getActiveObject();
-            if (!activeObject) return;
-            
-            const color = $(this).val();
-            
-            // 🆕 Apply to all text objects in selection
-            applyToAllTextObjects(activeObject, (textObj) => {
-                textObj.set('fill', color);
-            });
-            
-            // ✅ Update visual div (all same color now)
-            $('#color-visual').css('background', color);
-            
-            canvas.renderAll();
-        });
-        
-        $('#toolbar-line-height').on('input change', function() {
-            const activeObject = canvas.getActiveObject();
-            if (!activeObject) return;
-            
-            const lineHeight = parseFloat($(this).val());
-            if (isNaN(lineHeight) || lineHeight < 0.5 || lineHeight > 3) return;
-            
-            // 🆕 Apply to all text objects in selection
-            applyToAllTextObjects(activeObject, (textObj) => {
-                textObj.set('lineHeight', lineHeight);
-            });
-            
-            canvas.renderAll();
         });
         
         // Sidebar text content changes
@@ -2343,18 +2465,6 @@
                 canvas.renderAll();
             }
         });
-
-        // =============================
-        // Object Align/Distribute actions
-        // =============================
-        $('#obj-align-left, #obj-align-center, #obj-align-right, #obj-align-top, #obj-align-middle, #obj-align-bottom').on('click', function() {
-            const id = this.id;
-            const mode = id.replace('obj-align-', '');
-            alignSelection(canvas, mode);
-        });
-
-        $('#obj-distribute-h').on('click', function() { distributeSelection(canvas, 'h'); });
-        $('#obj-distribute-v').on('click', function() { distributeSelection(canvas, 'v'); });
         
         // Minimize panel properti saat klik ikon gear
         $('#sidebar-header-gear').on('click', function() {
@@ -2399,6 +2509,9 @@
         const container = $('#floating-toolbar');
         if (!container.length) return;
 
+        ensureFloatingPopover();
+        initFloatingFormattingControls(canvas);
+
         const updateHandler = () => updateFloatingFormattingPreview(canvas);
 
         canvas.on('selection:created', updateHandler);
@@ -2410,6 +2523,7 @@
         canvas.on('selection:cleared', () => {
             container.hide();
             clearFloatingColorChip();
+            closeFloatingPopover();
         });
         canvas.on('mouse:wheel', () => {
             if (canvas.getActiveObject()) {
@@ -2427,7 +2541,25 @@
             } else {
                 $('#align-mode-toggle').removeClass('active');
             }
+
+            updateFloatingFormattingPreview(canvas);
         });
+
+        $('#floating-bold, #floating-italic, #floating-underline')
+            .off('click')
+            .on('click', function(e) {
+                e.preventDefault();
+                const action = $(this).attr('id').replace('floating-', '');
+                handleFormattingAction(canvas, action);
+            });
+
+        $('.floating-align-button')
+            .off('click')
+            .on('click', function(e) {
+                e.preventDefault();
+                const direction = $(this).data('align');
+                handleFloatingAlign(canvas, direction);
+            });
     }
 
     function initFloatingColorDropdown() {
@@ -2450,6 +2582,8 @@
         trigger.on('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
+
+            closeFloatingPopover();
 
             const willOpen = !host.hasClass('open');
             host.toggleClass('open', willOpen);
@@ -2519,6 +2653,595 @@
                 closeFloatingColorDropdown();
             }
         });
+    }
+
+    function ensureFloatingPopover() {
+        let popover = $('#floating-control-popover');
+        if (!popover.length) {
+            popover = $('<div id="floating-control-popover" class="floating-popover" aria-hidden="true"></div>');
+            $('body').append(popover);
+            // Prevent clicks/focus inside the popover from bubbling to document handlers
+            popover.on('mousedown.floatingPopover click.floatingPopover touchstart.floatingPopover focusin.floatingPopover', function(e) {
+                e.stopPropagation();
+            });
+        }
+
+        if (!window.floatingPopoverDocEventsBound) {
+            // Close the floating popover when clicking outside. Interactions inside the popover
+            // stop propagation, so clicks inside won't accidentally close it.
+            $(document).on('click.floatingPopover', function(e) {
+                const activePopover = $('#floating-control-popover');
+                if (!activePopover.length || !activePopover.hasClass('active')) return;
+
+                const anchor = floatingPopoverState.anchor;
+                if (anchor && (anchor === e.target || $.contains(anchor, e.target))) {
+                    return;
+                }
+
+                if (activePopover.is(e.target) || activePopover.has(e.target).length) {
+                    return;
+                }
+
+                closeFloatingPopover();
+            });
+
+            // Keep Escape key working to close quickly.
+            $(document).on('keydown.floatingPopover', function(e) {
+                if (e.key === 'Escape') {
+                    closeFloatingPopover();
+                }
+            });
+
+            window.floatingPopoverDocEventsBound = true;
+        }
+
+        return popover;
+    }
+
+    function initFloatingFormattingControls(canvas) {
+        const popover = ensureFloatingPopover();
+        const selectors = '#floating-font-family, #floating-font-size, #floating-line-height';
+
+        $(selectors).off('click.floatingControls').on('click.floatingControls', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const id = this.id;
+            let type = null;
+            if (id === 'floating-font-family') type = 'fontFamily';
+            if (id === 'floating-font-size') type = 'fontSize';
+            if (id === 'floating-line-height') type = 'lineHeight';
+            if (!type) return;
+
+            toggleFloatingPopover(type, this, canvas);
+        });
+
+        popover.off('click.floatingControls', '.option-button').on('click.floatingControls', '.option-button', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const action = $(this).data('action');
+            const value = $(this).data('value');
+            const targetCanvas = floatingPopoverState.canvas;
+            if (!targetCanvas || !action) return;
+
+            if (action === 'font-family') {
+                applyFloatingFontFamily(targetCanvas, value);
+            } else if (action === 'font-size') {
+                applyFloatingFontSize(targetCanvas, parseFloat(value));
+            } else if (action === 'line-height') {
+                applyFloatingLineHeight(targetCanvas, parseFloat(value));
+            }
+        });
+        // Note: 'Terapkan' button removed — commit happens on Enter or when popover closes.
+        // Handle enter key to apply
+        popover.off('keydown.floatingControls', 'input').on('keydown.floatingControls', 'input', function(e) {
+            if (e.key !== 'Enter') return;
+
+            const targetCanvas = floatingPopoverState.canvas;
+            if (!targetCanvas) return;
+
+            e.preventDefault();
+            const id = this.id;
+            const value = parseFloat($(this).val());
+            if (id === 'floating-font-size-input') {
+                applyFloatingFontSize(targetCanvas, value);
+            } else if (id === 'floating-line-height-input') {
+                applyFloatingLineHeight(targetCanvas, value);
+            }
+        });
+
+        // Typing in the numeric input will NOT preview immediately to avoid
+        // interfering with user editing (they can clear and type freely).
+        // Commit will occur on Enter or when the popover is closed (click outside / preset selection).
+
+        // Select input on focus and allow free deletion: remove min while editing to avoid browser-enforced clamping
+        popover.off('focusin.floatingControls', 'input').on('focusin.floatingControls', 'input', function(e) {
+            try { $(this).select(); } catch (err) {}
+            // temporarily remove min so user can clear the field
+            const id = this.id;
+            if (id === 'floating-font-size-input') $(this).removeAttr('min');
+            if (id === 'floating-line-height-input') $(this).removeAttr('min');
+        });
+
+        popover.off('blur.floatingControls', 'input').on('blur.floatingControls', 'input', function(e) {
+            const id = this.id;
+            if (id === 'floating-font-size-input') $(this).attr('min', 6);
+            if (id === 'floating-line-height-input') $(this).attr('min', 0.5);
+        });
+
+        // +/- spin buttons inside popover (increment/decrement the input and preview)
+        popover.off('click.floatingControls', '.input-row .spin-button').on('click.floatingControls', '.input-row .spin-button', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const $btn = $(this);
+            const dir = $btn.data('dir'); // 'up' or 'down'
+            const $input = $btn.siblings('input');
+            if (!$input.length) return;
+
+            let val = parseFloat($input.val()) || 0;
+            const step = parseFloat($input.attr('step')) || 1;
+            if (dir === 'up') val = val + step; else val = val - step;
+            const min = parseFloat($input.attr('min'));
+            const max = parseFloat($input.attr('max'));
+            if (!isNaN(min)) val = Math.max(val, min);
+            if (!isNaN(max)) val = Math.min(val, max);
+
+            $input.val(val);
+
+            const targetCanvas = floatingPopoverState.canvas;
+            if (!targetCanvas) return;
+
+            if ($input.attr('id') === 'floating-font-size-input') {
+                previewFloatingFontSize(targetCanvas, val);
+            } else if ($input.attr('id') === 'floating-line-height-input') {
+                previewFloatingLineHeight(targetCanvas, val);
+            }
+        });
+    }
+
+    function toggleFloatingPopover(type, anchor, canvas) {
+        if (floatingPopoverState.isOpen) {
+            if (floatingPopoverState.type === type && floatingPopoverState.anchor === anchor) {
+                closeFloatingPopover();
+                return;
+            }
+            closeFloatingPopover();
+        }
+
+        closeFloatingColorDropdown();
+        openFloatingPopover(type, anchor, canvas);
+    }
+
+    function openFloatingPopover(type, anchor, canvas) {
+        const popover = ensureFloatingPopover();
+        floatingPopoverState.isOpen = true;
+        floatingPopoverState.type = type;
+        floatingPopoverState.anchor = anchor;
+        floatingPopoverState.canvas = canvas;
+
+        renderFloatingPopover(type, canvas);
+
+        const $anchor = $(anchor);
+        $anchor.addClass('open');
+        popover.detach().appendTo($anchor);
+
+        popover.addClass('active').attr('aria-hidden', 'false');
+    }
+
+    function closeFloatingPopover() {
+        const popover = $('#floating-control-popover');
+        if (!popover.length) return;
+        // If popover is open and contains a pending valid numeric input, commit it
+        if (floatingPopoverState.isOpen && !floatingPopoverState.autoApplying) {
+            const type = floatingPopoverState.type;
+            const canvas = floatingPopoverState.canvas;
+            if (type === 'fontSize') {
+                const input = $('#floating-font-size-input');
+                if (input.length) {
+                    const val = parseFloat(input.val());
+                    if (!isNaN(val)) {
+                        floatingPopoverState.autoApplying = true;
+                        applyFloatingFontSize(canvas, val);
+                        floatingPopoverState.autoApplying = false;
+                        return; // applyFloatingFontSize will call closeFloatingPopover again
+                    }
+                }
+            } else if (type === 'lineHeight') {
+                const input = $('#floating-line-height-input');
+                if (input.length) {
+                    const val = parseFloat(input.val());
+                    if (!isNaN(val)) {
+                        floatingPopoverState.autoApplying = true;
+                        applyFloatingLineHeight(canvas, val);
+                        floatingPopoverState.autoApplying = false;
+                        return; // applyFloatingLineHeight will call closeFloatingPopover again
+                    }
+                }
+            }
+        }
+
+        const anchor = floatingPopoverState.anchor;
+        if (anchor && anchor.classList) {
+            anchor.classList.remove('open');
+        }
+
+        popover.removeClass('active').attr('aria-hidden', 'true');
+        popover.detach().appendTo('body');
+
+        floatingPopoverState.isOpen = false;
+        floatingPopoverState.type = null;
+        floatingPopoverState.anchor = null;
+        floatingPopoverState.canvas = null;
+    }
+
+    function renderFloatingPopover(type, canvas) {
+        const popover = ensureFloatingPopover();
+        popover.removeAttr('data-type');
+        popover.attr('data-type', type);
+        popover.empty();
+
+        const textObjects = getActiveTextObjects(canvas);
+        if (!textObjects.length) {
+            popover.append($('<div class="popover-note">').text('Pilih objek teks untuk mengubah properti.'));
+            return;
+        }
+
+        if (type === 'fontFamily') {
+            renderFontFamilyPopover(popover, textObjects);
+        } else if (type === 'fontSize') {
+            renderFontSizePopover(popover, textObjects);
+        } else if (type === 'lineHeight') {
+            renderLineHeightPopover(popover, textObjects);
+        }
+    }
+
+    function renderFontFamilyPopover(popover, textObjects) {
+        const commonFont = getCommonPropertyValue(textObjects, 'fontFamily');
+        const note = commonFont ? `Saat ini: ${commonFont}` : 'Saat ini campuran';
+
+        popover.append($('<div class="popover-title">').text('Font Family'));
+        popover.append($('<div class="popover-note">').text(note));
+
+        const searchInput = $('<input type="text" class="search-input" placeholder="Cari font…" autocomplete="off">');
+        popover.append(searchInput);
+
+        if (floatingRecentFonts.length > 0) {
+            popover.append($('<div class="recent-heading">').text('Font Terakhir'));
+            const recentList = $('<div class="recent-list">');
+            floatingRecentFonts.forEach(font => {
+                const button = $('<button type="button" class="option-button font-option">')
+                    .attr('data-action', 'font-family')
+                    .attr('data-value', font)
+                    .text(font);
+                if (commonFont && font.toLowerCase() === commonFont.toLowerCase()) {
+                    button.addClass('active');
+                }
+                recentList.append(button);
+            });
+            popover.append(recentList);
+        }
+
+        popover.append($('<div class="all-heading">').text('Semua Font'));
+
+        const section = $('<div class="popover-section">');
+        const grid = $('<div class="option-grid font-list">');
+
+        const activeFont = commonFont ? commonFont.toLowerCase() : null;
+        FLOATING_FONT_FAMILIES.forEach(font => {
+            const button = $('<button type="button" class="option-button font-option">')
+                .attr('data-action', 'font-family')
+                .attr('data-value', font)
+                .append($('<span class="sample">').text(font).css('font-family', font));
+            if (activeFont && activeFont === font.toLowerCase()) {
+                button.addClass('active');
+            }
+            grid.append(button);
+        });
+
+        section.append(grid);
+        popover.append(section);
+
+        const applyFilter = (term) => {
+            const lower = (term || '').trim().toLowerCase();
+            grid.children('button').each(function() {
+                const text = ($(this).text() || '').toLowerCase();
+                $(this).toggle(!lower || text.includes(lower));
+            });
+        };
+
+        searchInput.on('input', function() {
+            applyFilter($(this).val());
+        });
+
+        searchInput.on('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const term = $(this).val();
+                const lower = (term || '').trim().toLowerCase();
+                let targetFont = null;
+
+                if (floatingRecentFonts.length) {
+                    targetFont = floatingRecentFonts.find(font => font.toLowerCase().includes(lower));
+                }
+
+                if (!targetFont) {
+                    targetFont = FLOATING_FONT_FAMILIES.find(font => font.toLowerCase().includes(lower));
+                }
+
+                if (targetFont) {
+                    applyFloatingFontFamily(floatingPopoverState.canvas, targetFont);
+                }
+            }
+        });
+
+        setTimeout(() => searchInput.trigger('focus'), 10);
+    }
+
+    function renderFontSizePopover(popover, textObjects) {
+        const commonSize = getCommonFontSize(textObjects);
+        const note = (commonSize === null || commonSize === undefined)
+            ? 'Saat ini campuran'
+            : `Saat ini: ${commonSize}px`;
+
+        popover.append($('<div class="popover-title">').text('Ukuran Font'));
+        popover.append($('<div class="popover-note">').text(note));
+
+        const quickSection = $('<div class="popover-section">');
+        const grid = $('<div class="option-grid">');
+
+        FLOATING_FONT_SIZE_PRESETS.forEach(size => {
+            const button = $('<button type="button" class="option-button">')
+                .attr('data-action', 'font-size')
+                .attr('data-value', size)
+                .text(`${size}px`);
+            if (commonSize === size) {
+                button.addClass('active');
+            }
+            grid.append(button);
+        });
+
+        quickSection.append(grid);
+        popover.append(quickSection);
+
+        const inputSection = $('<div class="popover-section">');
+        const inputRow = $('<div class="input-row">');
+
+        // Build spin control: [-] [input] [+]
+        const spinGroup = $('<div class="input-group" style="width:100%;">');
+    const decBtn = $('<button type="button" class="spin-button" data-dir="down" aria-label="Kurangi ukuran font">−</button>');
+
+    const input = $('<input type="number" min="6" max="200" id="floating-font-size-input" step="1" class="form-control text-center">').attr('inputmode','numeric');
+        if (typeof commonSize === 'number' && !Number.isNaN(commonSize)) {
+            input.val(commonSize);
+        } else {
+            input.attr('placeholder', 'Mixed');
+        }
+
+    const incBtn = $('<button type="button" class="spin-button" data-dir="up" aria-label="Tambah ukuran font">+</button>');
+
+        spinGroup.append(decBtn, input, incBtn);
+
+    inputRow.append(spinGroup);
+        inputSection.append(inputRow);
+        popover.append(inputSection);
+    }
+
+    function renderLineHeightPopover(popover, textObjects) {
+        let commonLineHeight = getCommonPropertyValue(textObjects, 'lineHeight');
+        if (commonLineHeight === undefined) {
+            commonLineHeight = null;
+        }
+
+        const note = (commonLineHeight === null)
+            ? 'Saat ini campuran'
+            : `Saat ini: ${formatLineHeight(commonLineHeight)}`;
+
+        popover.append($('<div class="popover-title">').text('Spasi Baris'));
+        popover.append($('<div class="popover-note">').text(note));
+
+        const quickSection = $('<div class="popover-section">');
+        const grid = $('<div class="option-grid">');
+
+        FLOATING_LINE_HEIGHT_PRESETS.forEach(value => {
+            const button = $('<button type="button" class="option-button">')
+                .attr('data-action', 'line-height')
+                .attr('data-value', value)
+                .text(formatLineHeight(value));
+            if (commonLineHeight !== null && Math.abs(value - commonLineHeight) < 0.001) {
+                button.addClass('active');
+            }
+            grid.append(button);
+        });
+
+        quickSection.append(grid);
+        popover.append(quickSection);
+
+        const inputSection = $('<div class="popover-section">');
+        const inputRow = $('<div class="input-row">');
+
+        const spinGroup = $('<div class="input-group" style="width:100%;">');
+    const decBtn = $('<button type="button" class="spin-button" data-dir="down" aria-label="Kurangi spasi baris">−</button>');
+
+    const input = $('<input type="number" min="0.5" max="3" step="0.05" id="floating-line-height-input" class="form-control text-center">').attr('inputmode','numeric');
+        if (commonLineHeight !== null && commonLineHeight !== undefined) {
+            input.val(parseFloat(commonLineHeight).toFixed(2).replace(/\.00$/, ''));
+        } else {
+            input.attr('placeholder', 'Mixed');
+        }
+
+    const incBtn = $('<button type="button" class="spin-button" data-dir="up" aria-label="Tambah spasi baris">+</button>');
+
+        spinGroup.append(decBtn, input, incBtn);
+
+    inputRow.append(spinGroup);
+        inputSection.append(inputRow);
+        popover.append(inputSection);
+    }
+
+    function applyFloatingFontFamily(canvas, fontFamily) {
+        if (!canvas || !fontFamily) return;
+        const active = canvas.getActiveObject();
+        if (!active) return;
+
+        updateFloatingRecentFonts(fontFamily);
+
+        applyToAllTextObjects(active, (textObj) => {
+            textObj.set('fontFamily', fontFamily);
+        });
+
+        canvas.requestRenderAll();
+        canvas.fire('object:modified', { target: active });
+        closeFloatingPopover();
+
+        setTimeout(() => {
+            const current = canvas.getActiveObject() || active;
+            if (current) {
+                syncCanvasToToolbar(current);
+                updateFloatingFormattingPreview(canvas);
+            }
+        }, 10);
+    }
+
+    function applyFloatingFontSize(canvas, sizeValue) {
+        if (!canvas) return;
+        const active = canvas.getActiveObject();
+        if (!active) return;
+
+        const parsed = parseInt(sizeValue, 10);
+        if (Number.isNaN(parsed)) return;
+
+        const constrained = Math.max(6, Math.min(200, parsed));
+
+        applyToAllTextObjects(active, (textObj) => {
+            const currentScale = textObj.scaleY || 1;
+            textObj.set({
+                fontSize: constrained / currentScale,
+                scaleY: currentScale
+            });
+        });
+
+        canvas.requestRenderAll();
+        canvas.fire('object:modified', { target: active });
+        closeFloatingPopover();
+
+        setTimeout(() => {
+            const current = canvas.getActiveObject() || active;
+            if (current) {
+                syncCanvasToToolbar(current);
+                updateFloatingFormattingPreview(canvas);
+            }
+        }, 10);
+    }
+
+    function applyFloatingLineHeight(canvas, rawValue) {
+        if (!canvas) return;
+        const active = canvas.getActiveObject();
+        if (!active) return;
+
+        const value = parseFloat(rawValue);
+        if (Number.isNaN(value)) return;
+
+        const constrained = Math.max(0.5, Math.min(3, value));
+
+        applyToAllTextObjects(active, (textObj) => {
+            textObj.set('lineHeight', constrained);
+        });
+
+        canvas.requestRenderAll();
+        canvas.fire('object:modified', { target: active });
+        closeFloatingPopover();
+
+        setTimeout(() => {
+            const current = canvas.getActiveObject() || active;
+            if (current) {
+                syncCanvasToToolbar(current);
+                updateFloatingFormattingPreview(canvas);
+            }
+        }, 10);
+    }
+
+    // Live preview helpers: apply changes visually WITHOUT closing the popover or firing final object:modified
+    function previewFloatingFontSize(canvas, sizeValue) {
+        if (!canvas) return;
+        const active = canvas.getActiveObject();
+        if (!active) return;
+
+        const parsed = parseInt(sizeValue, 10);
+        if (Number.isNaN(parsed)) return;
+
+        const constrained = Math.max(6, Math.min(200, parsed));
+
+        applyToAllTextObjects(active, (textObj) => {
+            const currentScale = textObj.scaleY || 1;
+            textObj.set({
+                fontSize: constrained / currentScale,
+                scaleY: currentScale
+            });
+        });
+
+        canvas.requestRenderAll();
+
+        setTimeout(() => {
+            const current = canvas.getActiveObject() || active;
+            if (current) {
+                syncCanvasToToolbar(current);
+                updateFloatingFormattingPreview(canvas);
+            }
+        }, 10);
+    }
+
+    function previewFloatingLineHeight(canvas, rawValue) {
+        if (!canvas) return;
+        const active = canvas.getActiveObject();
+        if (!active) return;
+
+        const value = parseFloat(rawValue);
+        if (Number.isNaN(value)) return;
+
+        const constrained = Math.max(0.5, Math.min(3, value));
+
+        applyToAllTextObjects(active, (textObj) => {
+            textObj.set('lineHeight', constrained);
+        });
+
+        canvas.requestRenderAll();
+
+        setTimeout(() => {
+            const current = canvas.getActiveObject() || active;
+            if (current) {
+                syncCanvasToToolbar(current);
+                updateFloatingFormattingPreview(canvas);
+            }
+        }, 10);
+    }
+
+    function updateFloatingRecentFonts(fontFamily) {
+        if (!fontFamily) return;
+        const normalized = fontFamily.toLowerCase();
+        floatingRecentFonts = floatingRecentFonts.filter(font => font.toLowerCase() !== normalized);
+        floatingRecentFonts.unshift(fontFamily);
+        if (floatingRecentFonts.length > 2) {
+            floatingRecentFonts = floatingRecentFonts.slice(0, 2);
+        }
+    }
+
+    function getActiveTextObjects(canvas) {
+        if (!canvas) return [];
+        const active = canvas.getActiveObject();
+        if (!active) return [];
+
+        if (isTextObject(active)) {
+            return [active];
+        }
+
+        return getTextObjectsFromSelection(active);
+    }
+
+    function isElementInDocument(element) {
+        if (!element) return false;
+        return document.body.contains(element);
     }
 
     function closeFloatingColorDropdown() {
@@ -2814,6 +3537,7 @@
 
         if (!activeObject) {
             container.hide();
+            closeFloatingPopover();
             return;
         }
 
@@ -2835,6 +3559,7 @@
 
         if (!hasText && !supportsGrouping) {
             container.hide();
+            closeFloatingPopover();
             return;
         }
 
@@ -2843,6 +3568,50 @@
     const groupDivider = $('#floating-row-divider');
     const groupActions = $('#floating-group-actions');
     const infoLabel = $('#floating-toolbar-info');
+    const alignHorizontalGroup = $('#floating-align-horizontal');
+    const alignVerticalGroup = $('#floating-align-vertical');
+    const alignVerticalDivider = container.find('.align-vertical-divider');
+    const alignToggle = $('#align-mode-toggle');
+    const alignCheckbox = $('#align-within-group-checkbox');
+    const alignContext = resolveFloatingAlignContext(activeObject, textObjects);
+    const textAlignTitles = {
+        left: 'Rata teks kiri',
+        center: 'Rata teks tengah',
+        right: 'Rata teks kanan',
+    };
+    const objectAlignTitles = {
+        left: 'Sejajarkan objek ke kiri',
+        center: 'Sejajarkan objek ke tengah horizontal',
+        right: 'Sejajarkan objek ke kanan',
+    };
+    const verticalAlignTitles = {
+        top: 'Sejajarkan objek ke atas',
+        middle: 'Sejajarkan objek ke tengah vertikal',
+        bottom: 'Sejajarkan objek ke bawah',
+    };
+
+    window.floatingAlignMode = alignContext.mode;
+    container.attr('data-align-mode', alignContext.mode);
+    alignVerticalGroup.toggleClass('is-hidden', !alignContext.showVertical);
+    alignVerticalDivider.toggleClass('is-hidden', !alignContext.showVertical);
+
+    const isSignatureAlignMode = alignContext.mode === 'signature-text';
+    const horizontalTitleMap = (alignContext.mode === 'text' || isSignatureAlignMode) ? textAlignTitles : objectAlignTitles;
+    ['left', 'center', 'right'].forEach(pos => {
+        const btn = $(`#floating-align-${pos}`);
+        btn.attr('title', horizontalTitleMap[pos]);
+        if (alignContext.mode !== 'text') {
+            btn.removeClass('active mixed');
+        }
+    });
+
+    ['top', 'middle', 'bottom'].forEach(pos => {
+        const btn = $(`#floating-align-${pos}`);
+        btn.attr('title', verticalAlignTitles[pos]);
+        if (alignContext.mode !== 'object') {
+            btn.removeClass('active mixed');
+        }
+    });
 
         if (hasText) {
             formattingGroup.removeClass('is-hidden');
@@ -2869,16 +3638,18 @@
             updatePreviewToggle('#floating-italic', isItalic);
             updatePreviewToggle('#floating-underline', isUnderline);
 
-            const commonAlign = getCommonPropertyValue(textObjects, 'textAlign');
-            ['left', 'center', 'right'].forEach(pos => {
-                const btn = $(`#floating-align-${pos}`);
-                btn.removeClass('active mixed');
-                if (commonAlign === pos) {
-                    btn.addClass('active');
-                } else if (commonAlign === null || commonAlign === undefined) {
-                    btn.addClass('mixed');
-                }
-            });
+            if (alignContext.mode === 'text' || isSignatureAlignMode) {
+                const commonAlign = getCommonPropertyValue(textObjects, 'textAlign');
+                ['left', 'center', 'right'].forEach(pos => {
+                    const btn = $(`#floating-align-${pos}`);
+                    btn.removeClass('active mixed');
+                    if (commonAlign === pos) {
+                        btn.addClass('active');
+                    } else if (commonAlign === null || commonAlign === undefined) {
+                        btn.addClass('mixed');
+                    }
+                });
+            }
         } else {
             formattingGroup.addClass('is-hidden');
             const count = isMultiSelect
@@ -2898,33 +3669,75 @@
                 .forEach(selector => $(selector).removeClass('active mixed'));
         }
 
-        const groupRowVisible = supportsGrouping && !isSignatureGroup;
+    // Show group/action row for multi-selects and custom groups. Also allow
+    // signature blocks to expose group-related actions (Option B) while
+    // keeping them protected from ungrouping.
+    const groupRowVisible = supportsGrouping || isSignatureGroup;
         groupRow.toggleClass('active', groupRowVisible);
         groupDivider.toggleClass('active', groupRowVisible);
 
         if (groupRowVisible) {
+            alignToggle.attr('title', 'Align Within Group').removeClass('readonly');
+            alignCheckbox
+                .removeAttr('data-signature-readonly')
+                .prop('disabled', false);
+
             if (isMultiSelect) {
                 $('#float-group').show();
-                $('#float-ungroup').hide();
-                $('#align-mode-toggle').hide();
+                $('#float-ungroup').hide().prop('disabled', false).removeClass('disabled');
+                alignToggle.hide();
+                alignCheckbox.prop('checked', false);
             } else if (isCustomGroup) {
-                $('#float-group').hide();
-                $('#float-ungroup').show();
-                if (!isSignatureGroup) {
-                    $('#align-mode-toggle').show();
-                    $('#align-within-group-checkbox').prop('checked', !!window.alignWithinGroupMode);
-                    $('#align-mode-toggle').toggleClass('active', !!window.alignWithinGroupMode);
+                if (isSignatureGroup) {
+                    $('#float-group').hide();
+                    $('#float-ungroup').hide().prop('disabled', true).addClass('disabled');
+                    alignToggle.show().addClass('active').attr('title', 'Align Within Signature Block');
+                    alignCheckbox
+                        .prop('checked', true)
+                        .prop('disabled', true)
+                        .attr('data-signature-readonly', 'true');
                 } else {
-                    $('#align-mode-toggle').hide();
+                    $('#float-group').hide();
+                    $('#float-ungroup')
+                        .show()
+                        .prop('disabled', false)
+                        .removeClass('disabled')
+                        .attr('title', 'Ungroup (Ctrl+Shift+G)');
+                    alignToggle.show();
+                    alignCheckbox
+                        .prop('checked', !!window.alignWithinGroupMode);
+                    alignToggle.toggleClass('active', !!window.alignWithinGroupMode);
                 }
+            } else if (isSignatureGroup) {
+                // Signature block selected directly (not marked as custom group)
+                $('#float-group').hide();
+                $('#float-ungroup').hide().prop('disabled', true).addClass('disabled');
+                alignToggle.show().addClass('active').attr('title', 'Align Within Signature Block');
+                alignCheckbox
+                    .prop('checked', true)
+                    .prop('disabled', true)
+                    .attr('data-signature-readonly', 'true');
             }
         } else {
             $('#float-group').hide();
-            $('#float-ungroup').hide();
-            $('#align-mode-toggle').hide();
+            $('#float-ungroup').hide().prop('disabled', false).removeClass('disabled');
+            alignToggle.hide().removeClass('active');
+            alignCheckbox
+                .prop('disabled', false)
+                .removeAttr('data-signature-readonly')
+                .prop('checked', !!window.alignWithinGroupMode);
         }
 
-        const bounds = activeObject.getBoundingRect(true, true);
+        // Compute bounding box to anchor the floating toolbar.
+        // If the active object is a signature-block child text, align toolbar
+        // with the parent block rather than the inner text to keep position
+        // consistent with the block reference.
+        let bounds;
+        if (isTextObject(activeObject) && activeObject.group && activeObject.group.isSignatureBlock) {
+            bounds = activeObject.group.getBoundingRect(true, true);
+        } else {
+            bounds = activeObject.getBoundingRect(true, true);
+        }
         const containerWrapper = $(canvas.wrapperEl).parent();
         const containerWidth = containerWrapper.innerWidth();
         const containerHeight = containerWrapper.innerHeight();
@@ -2974,6 +3787,18 @@
             .attr('data-placement', placement)
             .attr('data-mode', hasText ? 'text' : 'group')
             .show();
+
+        if (floatingPopoverState.isOpen) {
+            if (!isElementInDocument(floatingPopoverState.anchor)) {
+                closeFloatingPopover();
+            } else {
+                floatingPopoverState.canvas = canvas;
+                renderFloatingPopover(floatingPopoverState.type, canvas);
+                if (floatingPopoverState.anchor && floatingPopoverState.anchor.classList) {
+                    floatingPopoverState.anchor.classList.add('open');
+                }
+            }
+        }
     }
 
     function setFloatingChip(selector, value, formatter) {
@@ -2985,6 +3810,11 @@
             ? formatter(value)
             : (value === null || value === undefined ? 'Mixed' : value);
         chip.find('.value').text(formatted);
+
+        const titleText = value === null || value === undefined
+            ? (formatted || '')
+            : String(value);
+        chip.attr('title', titleText);
     }
 
     function setFloatingColorChip(selector, colorValue) {
@@ -3242,17 +4072,13 @@
                 window.contextualSidebar.showDefault();
             }
             
-            // Enable object align/distribute for multi-select
-            $('#obj-align-left, #obj-align-center, #obj-align-right, #obj-align-top, #obj-align-middle, #obj-align-bottom')
-                .prop('disabled', false);
-            $('#obj-distribute-h, #obj-distribute-v')
-                .prop('disabled', false);
-            
             return;
         }
         
-        // � GROUP DETECTION SUPPORT
-        const isGroup = selectedObject.type === 'group';
+    // � GROUP DETECTION SUPPORT
+    // NOTE: exclude signature blocks from generic group handling so
+    // signature groups are reported with their specific sidebar UI.
+    const isGroup = selectedObject.type === 'group' && !selectedObject.isSignatureBlock;
         
         if (isGroup) {
             // Get all text objects from group
@@ -3321,138 +4147,52 @@
             disableFormattingToolbar();
             window.contextualSidebar.showDefault();
         }
-
-        // Enable/disable object align/distribute buttons
-        const hasSelection = !!selectedObject;
-        $('#obj-align-left, #obj-align-center, #obj-align-right, #obj-align-top, #obj-align-middle, #obj-align-bottom')
-            .prop('disabled', !hasSelection);
-        $('#obj-distribute-h, #obj-distribute-v')
-            .prop('disabled', !isMultiSelect);
     }
     
     // 🔧 FUNGSI HELPER: Enable/Disable Toolbar
     function enableFormattingToolbar() {
-        $('#formatting-toolbar input, #formatting-toolbar select, #formatting-toolbar button[id^="toolbar-"]')
-            .prop('disabled', false)
-            .removeClass('text-muted');
-        
-        // ✅ Also enable font size +/- buttons
-        $('#font-size-increase, #font-size-decrease')
-            .prop('disabled', false)
-            .removeClass('text-muted');
-        
-        $('#formatting-toolbar .card-header small').html(
-            '<i class="fas fa-check-circle text-success mr-1"></i>Formatting aktif - teks dipilih'
-        );
+        // Static toolbar sudah dihapus - fungsi ini dibiarkan kosong untuk kompatibilitas
+        // Floating toolbar akan otomatis muncul saat ada selection
     }
     
     function disableFormattingToolbar() {
-        $('#formatting-toolbar input, #formatting-toolbar select, #formatting-toolbar button[id^="toolbar-"]')
-            .prop('disabled', true)
-            .addClass('text-muted');
-        
-        // ✅ Also disable font size +/- buttons
-        $('#font-size-increase, #font-size-decrease')
-            .prop('disabled', true)
-            .addClass('text-muted');
-            
-        $('#formatting-toolbar .card-header small').html(
-            '<i class="fas fa-info-circle mr-1"></i>Pilih teks pada canvas untuk mengaktifkan kontrol formatting'
-        );
+        // Static toolbar sudah dihapus - fungsi ini dibiarkan kosong untuk kompatibilitas
+        // Floating toolbar akan otomatis hide saat selection cleared
     }
     
     // 🔄 SINKRONISASI SATU ARAH: Canvas -> Toolbar  
     function syncCanvasToToolbar(textObject) {
-        // 🆕 MULTI-SELECTION SUPPORT
-        const isMultiSelect = textObject && textObject.type === 'activeSelection';
+        // 🆕 Fungsi ini sekarang hanya untuk kompatibilitas dan update floating toolbar
+        // Static toolbar sudah dihapus, jadi kita hanya perlu update floating toolbar preview
         
-        if (isMultiSelect) {
-            // Extract all text objects from selection
-            const textObjects = getTextObjectsFromSelection(textObject);
-            
-            if (textObjects.length === 0) {
-                // No text objects in selection
-                disableFormattingToolbar();
-                return;
-            }
-            
-            if (textObjects.length === 1) {
-                // Only one text object - treat as single selection
-                syncSingleTextToToolbar(textObjects[0]);
-                return;
-            }
-            
-            // Multiple text objects - show common values or "Mixed"
-            syncMultipleTextsToToolbar(textObjects);
-            
-        } else {
-            // Single object
-            syncSingleTextToToolbar(textObject);
+        const canvas = window.canvas;
+        if (canvas && canvas.getActiveObject()) {
+            updateFloatingFormattingPreview(canvas);
         }
     }
     
     /**
-     * Sync single text object to toolbar
+     * Sync single text object to toolbar (kept for compatibility)
      * @param {fabric.Text} textObject - Single text object
      */
     function syncSingleTextToToolbar(textObject) {
-        $('#toolbar-font-family').val(textObject.fontFamily || 'Arial').find('option[value=""]').remove();
-        
-        // Calculate effective font size (with scaling)
-        const effectiveSize = Math.round(getEffectiveFontSize(textObject));
-        $('#toolbar-font-size').val(effectiveSize).attr('placeholder', '');
-        
-        $('#toolbar-color').val(textObject.fill || '#000000').css('background', '').prop('disabled', false);
-        $('#toolbar-line-height').val(textObject.lineHeight || 1.2).attr('placeholder', '');
-        
-        // Update button states for bold/italic/underline
-        $('#toolbar-bold').toggleClass('active', textObject.fontWeight === 'bold');
-        $('#toolbar-italic').toggleClass('active', textObject.fontStyle === 'italic');
-        $('#toolbar-underline').toggleClass('active', textObject.underline === true);
-        
-        // Update alignment buttons
-        $('.btn-group button[id^="toolbar-align-"]').removeClass('active');
-        if (textObject.textAlign) {
-            $(`#toolbar-align-${textObject.textAlign}`).addClass('active');
+        // Fungsi ini dipanggil dari beberapa tempat untuk kompatibilitas
+        // Sekarang hanya update floating toolbar
+        if (window.canvas) {
+            updateFloatingFormattingPreview(window.canvas);
         }
     }
     
     /**
-     * Sync multiple text objects to toolbar (show common values or "Mixed")
+     * Sync multiple text objects to toolbar (kept for compatibility)
      * @param {Array} textObjects - Array of text objects
      */
     function syncMultipleTextsToToolbar(textObjects) {
-        // Font Family
-        const commonFont = getCommonPropertyValue(textObjects, 'fontFamily');
-        updateToolbarField('#toolbar-font-family', commonFont, 'Multiple fonts');
-        
-        // Font Size (with scaling)
-        const commonSize = getCommonFontSize(textObjects);
-        updateToolbarField('#toolbar-font-size', commonSize, 'Mixed');
-        
-        // Color (with split background if mixed)
-        updateColorPicker(textObjects);
-        
-        // Line Height
-        const commonLineHeight = getCommonPropertyValue(textObjects, 'lineHeight');
-        updateToolbarField('#toolbar-line-height', commonLineHeight, 'Mixed');
-        
-        // Bold/Italic/Underline (buttons)
-        const isBold = getCommonBooleanProperty(textObjects, 'fontWeight', 'bold');
-        const isItalic = getCommonBooleanProperty(textObjects, 'fontStyle', 'italic');
-        const isUnderline = getCommonBooleanProperty(textObjects, 'underline', true);
-        
-        $('#toolbar-bold').toggleClass('active', isBold === true);
-        $('#toolbar-italic').toggleClass('active', isItalic === true);
-        $('#toolbar-underline').toggleClass('active', isUnderline === true);
-        
-        // Text Alignment
-        const commonAlign = getCommonPropertyValue(textObjects, 'textAlign');
-        $('.btn-group button[id^="toolbar-align-"]').removeClass('active');
-        if (commonAlign) {
-            $(`#toolbar-align-${commonAlign}`).addClass('active');
+        // Fungsi ini dipanggil dari beberapa tempat untuk kompatibilitas
+        // Sekarang hanya update floating toolbar
+        if (window.canvas) {
+            updateFloatingFormattingPreview(window.canvas);
         }
-        // If mixed alignment, no button is active (already cleared above)
     }
     
     // 🎯 HELPER: Cek apakah objek adalah teks
@@ -3601,67 +4341,65 @@
      * @param {*} value - Value to set, or null for "Mixed"
      * @param {string} placeholderText - Custom placeholder text (default: "Mixed")
      */
-    function updateToolbarField(selector, value, placeholderText = 'Mixed') {
-        const $field = $(selector);
-        
-        if (value === null || value === undefined) {
-            // Mixed values - show placeholder but keep enabled
-            if ($field.is('select')) {
-                $field.val('').attr('data-placeholder', placeholderText);
-                // Add "Mixed" option if not exists
-                if ($field.find('option[value=""]').length === 0) {
-                    $field.prepend(`<option value="" disabled selected>${placeholderText}</option>`);
-                } else {
-                    $field.find('option[value=""]').text(placeholderText).prop('selected', true);
-                }
-            } else if ($field.is('input[type="number"]') || $field.is('input[type="text"]')) {
-                $field.val('').attr('placeholder', placeholderText);
-            }
-            // Keep field enabled for input
-            $field.prop('disabled', false);
-        } else {
-            // Common value - set normally
-            if ($field.is('select')) {
-                $field.find('option[value=""]').remove(); // Remove "Mixed" option
-                $field.val(value);
-            } else {
-                $field.val(value).attr('placeholder', '');
-            }
-            $field.prop('disabled', false);
-        }
-    }
+    // Fungsi updateToolbarField dihapus karena static toolbar sudah dihapus
     
-    /**
-     * Update color picker with split colors or single color
-     * @param {Array} textObjects - Array of text objects
-     */
-    function updateColorPicker(textObjects) {
-        const $colorPicker = $('#toolbar-color');
-        const $colorVisual = $('#color-visual');
-        
-        if (!textObjects || textObjects.length === 0) {
-            $colorPicker.val('#000000').prop('disabled', true);
-            $colorVisual.css('background', '#cccccc');
-            return;
+    function getSelectionObjects(activeObject) {
+        if (!activeObject) return [];
+
+        if (activeObject.type === 'activeSelection') {
+            return activeObject._objects ? activeObject._objects.slice() : [];
         }
-        
-        const colors = textObjects.map(obj => obj.fill || '#000000');
-        const uniqueColors = [...new Set(colors)];
-        
-        if (uniqueColors.length === 1) {
-            // All same color - solid background
-            $colorPicker.val(uniqueColors[0]).prop('disabled', false);
-            $colorVisual.css('background', uniqueColors[0]);
-        } else {
-            // ✅ Mixed colors - split background on visual div
-            $colorPicker.val(uniqueColors[0]).prop('disabled', false);
-            
-            const color1 = uniqueColors[0] || '#000000';
-            const color2 = uniqueColors[1] || '#ffffff';
-            $colorVisual.css('background', `linear-gradient(135deg, ${color1} 50%, ${color2} 50%)`);
+
+        if (activeObject.type === 'group') {
+            if (typeof activeObject.getObjects === 'function') {
+                return activeObject.getObjects();
+            }
+            return activeObject._objects ? activeObject._objects.slice() : [];
         }
+
+        return [activeObject];
     }
-    
+
+    function resolveFloatingAlignContext(activeObject, textObjects) {
+        const context = {
+            mode: 'text',
+            showVertical: false,
+            hasNonText: false,
+            totalObjects: 0,
+        };
+
+        if (!activeObject) {
+            return context;
+        }
+
+        const objects = getSelectionObjects(activeObject);
+        context.totalObjects = objects.length || (isTextObject(activeObject) ? 1 : 0);
+        context.hasNonText = objects.some(obj => !isTextObject(obj));
+
+        const isGroup = activeObject.type === 'group';
+        const isSignatureGroup = isGroup && !!activeObject.isSignatureBlock;
+        const isCustomGroup = isGroup && !!activeObject.isCustomGroup;
+        const isMultiSelect = activeObject.type === 'activeSelection';
+        const alignWithin = !!window.alignWithinGroupMode && isGroup && isCustomGroup;
+
+        if (isSignatureGroup) {
+            context.mode = 'signature-text';
+            context.showVertical = false;
+            context.hasNonText = false;
+            return context;
+        }
+
+        if (alignWithin || !textObjects.length || isGroup || context.hasNonText) {
+            context.mode = 'object';
+        }
+
+        if (context.mode === 'object') {
+            context.showVertical = isMultiSelect || isCustomGroup;
+        }
+
+        return context;
+    }
+
     /**
      * Apply function to all text objects in selection (including those in groups)
      * Handles both single text objects and multi-selections
@@ -3741,6 +4479,81 @@
         canvas.renderAll();
     }
     
+    function handleFormattingAction(canvas, action) {
+        if (!canvas) return;
+
+        const activeObject = canvas.getActiveObject();
+        if (!activeObject) return;
+
+        const textObjects = getTextObjectsFromSelection(activeObject);
+        const effectiveObjects = textObjects.length > 0
+            ? textObjects
+            : (isTextObject(activeObject) ? [activeObject] : []);
+        if (effectiveObjects.length === 0) return;
+
+        const toggleActions = ['bold', 'italic', 'underline'];
+        const isToggle = toggleActions.includes(action);
+        let commonState = null;
+
+        if (isToggle) {
+            if (action === 'bold') {
+                commonState = getCommonBooleanProperty(effectiveObjects, 'fontWeight', 'bold');
+            } else if (action === 'italic') {
+                commonState = getCommonBooleanProperty(effectiveObjects, 'fontStyle', 'italic');
+            } else if (action === 'underline') {
+                commonState = getCommonBooleanProperty(effectiveObjects, 'underline', true);
+            }
+        }
+
+        applyToAllTextObjects(activeObject, (textObj) => {
+            if (isToggle) {
+                applyTextFormatting(textObj, action, canvas, true, commonState);
+            } else {
+                applyTextFormatting(textObj, action, canvas);
+            }
+        });
+
+        canvas.fire('object:modified', { target: activeObject });
+
+        const refreshTarget = canvas.getActiveObject() || activeObject;
+        if (refreshTarget) {
+            setTimeout(() => {
+                syncCanvasToToolbar(refreshTarget);
+                updateFloatingFormattingPreview(canvas);
+            }, 10);
+        }
+    }
+
+    function handleFloatingAlign(canvas, direction) {
+        if (!canvas || !direction) return;
+
+        const activeObject = canvas.getActiveObject();
+        if (!activeObject) return;
+
+        const mode = window.floatingAlignMode || 'text';
+
+        if (mode === 'signature-text') {
+            const handledDirections = ['left', 'center', 'right'];
+            if (handledDirections.includes(direction)) {
+                if (alignSignatureBlockText(activeObject, direction)) {
+                    canvas.requestRenderAll();
+                    canvas.fire('object:modified', { target: activeObject });
+                    setTimeout(() => updateFloatingFormattingPreview(canvas), 10);
+                }
+                return;
+            }
+        }
+
+        if (mode === 'text' && (direction === 'left' || direction === 'center' || direction === 'right')) {
+            handleFormattingAction(canvas, `align-${direction}`);
+            return;
+        }
+
+        alignSelection(canvas, direction);
+        canvas.fire('object:modified', { target: activeObject });
+        setTimeout(() => updateFloatingFormattingPreview(canvas), 10);
+    }
+
 
 
     function populateTextPlaceholders() {
@@ -3887,6 +4700,65 @@
     // =============================
     // ALIGN/DISTRIBUTE HELPERS
     // =============================
+    function alignSignatureBlockText(group, direction) {
+        if (!group || group.type !== 'group' || !group.isSignatureBlock) return false;
+        if (!['left', 'center', 'right'].includes(direction)) return false;
+
+        const objects = group.getObjects ? group.getObjects() : (group._objects || []);
+        if (!objects.length) return false;
+
+        const textChildren = objects.filter(obj => isTextObject(obj));
+        if (!textChildren.length) return false;
+
+        const baseObject = objects.find(obj => !isTextObject(obj)) || group;
+        const baseWidth = typeof baseObject.getScaledWidth === 'function'
+            ? (baseObject === group
+                ? baseObject.getScaledWidth() / (group.scaleX || 1)
+                : baseObject.getScaledWidth())
+            : (baseObject.width || group.width || 0) * (baseObject.scaleX || 1);
+        const groupWidth = baseWidth || group.width || 0;
+        const baseCenter = baseObject === group ? 0 : (baseObject.left || 0);
+        const halfWidth = groupWidth / 2;
+
+        textChildren.forEach(child => {
+            const childWidth = typeof child.getScaledWidth === 'function'
+                ? child.getScaledWidth()
+                : (child.width || 0) * (child.scaleX || 1);
+
+            let newCenter = baseCenter;
+            let newAlign = child.textAlign || 'center';
+
+            switch (direction) {
+                case 'left':
+                    newCenter = (baseCenter - halfWidth) + (childWidth / 2);
+                    newAlign = 'left';
+                    break;
+                case 'center':
+                    newCenter = baseCenter;
+                    newAlign = 'center';
+                    break;
+                case 'right':
+                    newCenter = (baseCenter + halfWidth) - (childWidth / 2);
+                    newAlign = 'right';
+                    break;
+            }
+
+            child.set({
+                left: newCenter,
+                originX: 'center',
+                textAlign: newAlign
+            });
+            child.setCoords();
+        });
+
+        group.addWithUpdate();
+        group.setCoords();
+        if (window.undoRedoManager) {
+            window.undoRedoManager.saveState();
+        }
+        return true;
+    }
+
     function alignSelection(canvas, mode) {
         const active = canvas.getActiveObject();
         if (!active) return;
@@ -4054,7 +4926,7 @@
                 reader.onload = function(event) {
                     $('#' + previewId).attr('src', event.target.result).show();
                     // Store base64 data into hidden field so it can be submitted with the form
-                    const hiddenId = `#hidden_signature_image_${index}`;
+                    const hiddenId = `#hidden_signatures_${index}_image`;
                     if ($(hiddenId).length) {
                         $(hiddenId).val(event.target.result);
                     }
@@ -5073,7 +5945,10 @@
     // Certificate number preview functionality
     function setupCertificateNumberPreview() {
         const prefixInput = document.getElementById('certificate_number_prefix');
-        const helpText = prefixInput.parentNode.querySelector('.form-text');
+        if (!prefixInput) return;
+
+        const helpText = prefixInput.parentNode ? prefixInput.parentNode.querySelector('.form-text') : null;
+        if (!helpText) return;
         
         function updatePreview() {
             const prefix = prefixInput.value.trim();

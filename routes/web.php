@@ -13,13 +13,9 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Cache;
 use App\CertificateBatch;
 
-// Homepage
-Route::get('/', function () {
-    return view('welcome');
-});
 
 // Dashboard
-Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 Route::get('/certificates', [DashboardController::class, 'certificatesList'])->name('certificates.list');
 Route::get('/batches', [DashboardController::class, 'batchesList'])->name('batches.list');
 
