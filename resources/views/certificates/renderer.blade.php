@@ -134,10 +134,13 @@
                     // KASUS 2: Regular text objects
                     else if (obj.text) {
                         let text = obj.text;
+                        const originalText = text;
+                        
                         text = replacePlaceholders(text, 'nama_penerima', participantData.recipientName);
-                        text = replacePlaceholders(text, 'nomor_sertifikat', participantData.certificateNumber);
+                        // Support both certificateNumber (camelCase) and certificate_number (snake_case)
+                        text = replacePlaceholders(text, 'nomor_sertifikat', participantData.certificateNumber || participantData.certificate_number);
                         text = replacePlaceholders(text, 'jenis_sertifikat', participantData.certificateType);
-                        text = replacePlaceholders(text, 'nama_acara', participantData.eventName);
+                        text = replacePlaceholders(text, 'nama_acara', participantData.eventName || participantData.event_name);
                         text = replacePlaceholders(text, 'tanggal_acara', participantData.eventDate);
                         text = replacePlaceholders(text, 'tanggal_penandatanganan', participantData.signingDate);
                         text = replacePlaceholders(text, 'deskripsi_1', participantData.description1);
@@ -150,6 +153,17 @@
                         text = replacePlaceholders(text, 'nilai_2', participantData.nilai2);
                         text = replacePlaceholders(text, 'nilai_3', participantData.nilai3);
                         text = replacePlaceholders(text, 'nilai_4', participantData.nilai4);
+                        
+                        // SPECIAL CASE: Replace certificate number patterns {AUTO} and {AUTO:start}
+                        // This handles cases where the pattern is directly in the canvas text instead of placeholder
+                        if (text.includes('{AUTO}') || text.match(/\{AUTO:\d+\}/)) {
+                            const certNumber = participantData.certificateNumber || participantData.certificate_number || '';
+                            if (certNumber) {
+                                // Replace the entire text with the generated certificate number
+                                text = certNumber;
+                            }
+                        }
+                        
                         obj.set('text', text);
                     }
                 });

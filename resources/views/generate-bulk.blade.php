@@ -5674,10 +5674,64 @@
 
     // ========== PREVIEW SUBMISSION ==========
     function handlePreview(canvas) {
-    $('#template_json').val(JSON.stringify(canvas.toJSON(['isPlaceholder', 'isSignatureBlock', 'signatureIndex', 'areaKey', 'isSignatureName', 'isSignatureTitle'])));
-        const form = $('#main-form');
-        form.attr('action', '{{ route('certificates.render.preview') }}').attr('target', '_blank').submit();
-        setTimeout(() => form.attr('action', '{{ route('certificates.bulk.download') }}').removeAttr('target'), 500);
+        // Update template JSON
+        const templateJson = JSON.stringify(canvas.toJSON(['isPlaceholder', 'isSignatureBlock', 'signatureIndex', 'areaKey', 'isSignatureName', 'isSignatureTitle']));
+        
+        // Get main form and create FormData from it
+        const mainForm = document.getElementById('main-form');
+        const formData = new FormData(mainForm);
+        
+        // Override template_json with current canvas state
+        formData.set('template_json', templateJson);
+        
+        // Get data source
+        const dataSource = document.querySelector('input[name="data_source"]:checked');
+        
+        // Debug: Log all form data being sent
+        console.log('=== Preview Form Data ===');
+        for (let [key, value] of formData.entries()) {
+            if (value instanceof File) {
+                console.log(`${key}: [File] ${value.name}`);
+            } else {
+                console.log(`${key}: ${value}`);
+            }
+        }
+        
+        if (dataSource && dataSource.value === 'database') {
+            console.log('Data Source: database');
+            // Add selected karyawan IDs
+            window.selectedKaryawanIds.forEach(function(id) {
+                formData.append('selected_karyawan[]', id);
+                console.log(`selected_karyawan[]: ${id}`);
+            });
+        }
+        
+        console.log('=== End Preview Form Data ===');
+        
+        // Use XMLHttpRequest to submit form with file upload to new tab
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '{{ route('certificates.render.preview') }}', true);
+        
+        // This is important: We need to handle the response as a new window
+        xhr.onload = function() {
+            if (xhr.status === 200) {
+                // Open response in new tab
+                const newWindow = window.open('', '_blank');
+                newWindow.document.write(xhr.responseText);
+                newWindow.document.close();
+            } else {
+                console.error('Preview error:', xhr.statusText);
+                alert('Terjadi kesalahan saat membuka preview. Silakan coba lagi.');
+            }
+        };
+        
+        xhr.onerror = function() {
+            console.error('Network error');
+            alert('Terjadi kesalahan jaringan. Silakan coba lagi.');
+        };
+        
+        // Send the FormData (includes files automatically)
+        xhr.send(formData);
     }
 
     // ========== GENERATE SUBMISSION ==========
