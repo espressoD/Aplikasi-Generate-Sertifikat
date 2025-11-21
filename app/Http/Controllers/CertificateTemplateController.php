@@ -53,6 +53,32 @@ class CertificateTemplateController extends Controller
             'message' => 'Nama template berhasil diperbarui.'
         ]);
     }
+
+    /**
+     * Get design settings for a template (JSON).
+     */
+    public function getDesign(CertificateTemplate $template)
+    {
+        return response()->json([
+            'success' => true,
+            'design_settings' => $template->design_settings ?? []
+        ]);
+    }
+
+    /**
+     * Save design settings (JSON) for a template.
+     */
+    public function saveDesign(Request $request, CertificateTemplate $template)
+    {
+        $validated = $request->validate([
+            'design_settings' => 'required|json'
+        ]);
+
+        $template->design_settings = json_decode($validated['design_settings'], true);
+        $template->save();
+
+        return response()->json(['success' => true, 'message' => 'Design settings disimpan.']);
+    }
     
     /**
      * Menghapus template dari database.

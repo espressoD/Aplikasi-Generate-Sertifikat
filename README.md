@@ -275,6 +275,33 @@ CERT-2025-001, CERT-2025-002 (OK)
 CERT-2025-001 twice (ERROR)
 ```
 
+#### 7. Canvas Export / Generate Errors
+```javascript
+// ❌ Error: Cannot read properties of null (reading 'clearRect')
+// ❌ Warning: alphabetical is not a valid textBaseline
+// ❌ Warning: willReadFrequently performance warning
+
+✅ Solution: Patches applied automatically
+// Fabric.js patches fix these issues at runtime
+// Refresh browser (Ctrl+F5) to apply patches
+// Check console for: ✅ Fabric.js patches applied
+```
+
+#### 8. Validation Failed - Missing Required Fields
+```
+❌ Error: Server returned HTML instead of JSON
+
+✅ Solution: Fill all placeholder data before generating
+// Required placeholders:
+// - @{{nama_acara}} - Event name
+// - @{{jenis_sertifikat}} - Certificate type  
+// - @{{tanggal_acara}} - Event date range
+// - @{{tanggal_penandatanganan}} - Signing date & place
+// - @{{nomor_sertifikat}} - Certificate number format
+
+// Click each placeholder on canvas to fill data
+```
+
 ### 🔍 Debug Commands
 ```bash
 # Check logs
@@ -436,7 +463,15 @@ GET  /batches/{id}/download      # Download ZIP
 
 ## 📋 Version History
 
-### v3.1.0 - Advanced Certificate Numbering (Latest)
+### v3.1.1 - Canvas Export Stability & Validation (Latest)
+✅ **Canvas Export Fixes:** 3-tier fallback system untuk export canvas ke PNG  
+✅ **Fabric.js Patches:** Auto-fix textBaseline dan willReadFrequently warnings  
+✅ **Frontend Validation:** Validasi field wajib sebelum submit  
+✅ **Better Error Handling:** Informative messages untuk troubleshooting  
+✅ **DivisiList Fix:** Handle array/object response dari server  
+✅ **Performance Optimization:** willReadFrequently untuk operasi canvas cepat  
+
+### v3.1.0 - Advanced Certificate Numbering
 ✅ **Flexible Auto-Increment:** `{AUTO}` dapat ditempatkan di mana saja  
 ✅ **Custom Start Number:** `{AUTO:start_number}` untuk kontrol penuh  
 ✅ **Smart Padding:** Auto-adjust padding berdasarkan start number  

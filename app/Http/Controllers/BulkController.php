@@ -47,13 +47,15 @@ class BulkController extends Controller
 
     public function renderForPreview(Request $request)
     {
-        // Fungsi ini tidak membuat PDF, hanya menyiapkan data dan menampilkan view.
+        // Fungsi ini tidak membuat PDF, hanya menyiapkan data dan menampilkan view dengan sample data
         $request->validate([
             'template_json' => 'required|json',
-            // Hapus validasi lain karena ini hanya untuk render visual
+            // Validasi optional untuk data source
         ]);
 
         $templateArray = json_decode($request->template_json, true);
+        
+        // Prepare signature data
         $signatureData = [];
         if ($request->has('signatures')) {
             foreach ($request->signatures as $key => $sig) {
@@ -72,11 +74,84 @@ class BulkController extends Controller
             }
         }
 
-                $participantData = $this->prepareParticipantData($request, [
-            'Nama Contoh', 'email@contoh.com', 'Peserta', 'ID123', 'Divisi A', '85', '90', '78', '92'
-        ], $signatureData, 1); // Add certificate counter for preview
+        // Determine participant data based on data source
+        $sampleRow = null;
+        $totalParticipants = null; // Will be calculated based on data source
+        $dataSource = $request->input('data_source', '');
 
-        //dd($participantData);
+        if ($dataSource === 'file' && $request->hasFile('participant_file')) {
+            // Parse Excel/CSV and get first row
+            try {
+                $file = $request->file('participant_file');
+                $data = Excel::toCollection(null, $file)[0];
+                $totalParticipants = count($data) - 1; // Exclude header row
+                
+                // Skip header (row 0) and get first data row (row 1)
+                if (count($data) > 1) {
+                    $firstRow = $data[1]; // Index 1 = second row (first data row after header)
+                    
+                    $sampleRow = [
+                        $firstRow[0] ?? '', // nama
+                        $firstRow[1] ?? '', // email
+                        $firstRow[2] ?? '', // peran
+                        $firstRow[3] ?? '', // id
+                        $firstRow[4] ?? '', // divisi
+                        $firstRow[5] ?? '-', // nilai_1
+                        $firstRow[6] ?? '-', // nilai_2
+                        $firstRow[7] ?? '-', // nilai_3
+                        $firstRow[8] ?? '-', // nilai_4
+                    ];
+                }
+            } catch (\Exception $e) {
+                Log::error("Error parsing file for preview: " . $e->getMessage());
+                // Fall through to dummy data
+            }
+        } elseif ($dataSource === 'database') {
+            // Get first karyawan from selection or database
+            $karyawanId = null;
+            
+            if ($request->has('selected_karyawan') && is_array($request->selected_karyawan) && count($request->selected_karyawan) > 0) {
+                $totalParticipants = count($request->selected_karyawan);
+                $karyawanId = $request->selected_karyawan[0];
+            }
+            
+            // Query karyawan
+            $karyawan = $karyawanId ? Karyawan::find($karyawanId) : Karyawan::first();
+            
+            if ($karyawan) {
+                $sampleRow = [
+                    $karyawan->nama,
+                    '', // email - empty for database source
+                    'Peserta', // default role
+                    $karyawan->npk_id,
+                    $karyawan->divisi,
+                    '-', // nilai_1
+                    '-', // nilai_2
+                    '-', // nilai_3
+                    '-', // nilai_4
+                ];
+            }
+        }
+
+        // Fallback to dummy data if no source available
+        if (!$sampleRow) {
+            $totalParticipants = 1; // Dummy data = 1 participant
+            $sampleRow = [
+                'John Doe', 
+                'johndoe@example.com', 
+                'Peserta', 
+                '12345', 
+                'Divisi Contoh', 
+                '95', 
+                '90', 
+                '88', 
+                '92'
+            ];
+        }
+
+        // Prepare participant data with certificate counter = 1 for preview
+        // Pass totalParticipants for dynamic padding calculation
+        $participantData = $this->prepareParticipantData($request, $sampleRow, $signatureData, 1, $totalParticipants ?? 1);
 
         // Langsung kembalikan view, jangan buat PDF
         return view('certificates.renderer', [
@@ -168,7 +243,14 @@ class BulkController extends Controller
             $counter = 1;
             $jobsToDispatch = []; // Collect jobs for batched dispatch
             
+            // Calculate total participants for dynamic padding (exclude header if file source)
+            $totalParticipants = count($participants);
+            if ($request->data_source === 'file') {
+                $totalParticipants = max(0, $totalParticipants - 1); // Exclude header row
+            }
+            
             Log::info("Starting to process " . count($participants) . " participants");
+            Log::info("Total participants for padding calculation: " . $totalParticipants);
             
             // Reconnect database before processing participants
             \DB::reconnect();
@@ -198,7 +280,8 @@ class BulkController extends Controller
                     }
                 }
 
-                $participantData = $this->prepareParticipantData($request, $participant, $signatureDataForJob, $counter);
+                // Pass totalParticipants for dynamic padding calculation
+                $participantData = $this->prepareParticipantData($request, $participant, $signatureDataForJob, $counter, $totalParticipants);
                 $participantData['event_name'] = $request->event_name; // pastikan ini disertakan
                 
                 $imageData = $request->input('canvas_image');
@@ -351,7 +434,7 @@ class BulkController extends Controller
     /**
      * Helper function untuk menyiapkan data yang akan dikirim ke view renderer.
      */
-    private function prepareParticipantData(Request $request, $participantRow, $signatureData, $certificateCounter = null)
+    private function prepareParticipantData(Request $request, $participantRow, $signatureData, $certificateCounter = null, $totalParticipants = null)
     {
         // Format tanggal acara
         $startDate = Carbon::parse($request->start_date);
@@ -387,16 +470,31 @@ class BulkController extends Controller
                 $startNumber = intval($matches[1]);
                 $currentNumber = $startNumber + ($certificateCounter - 1);
                 
-                // Determine padding based on start number length or minimum 3 digits
-                $padding = max(3, strlen($matches[1]));
-                $autoNumber = str_pad($currentNumber, $padding, '0', STR_PAD_LEFT);
+                // Dynamic padding based on total participants (for consistency across all certificates)
+                if ($totalParticipants !== null && $totalParticipants > 0) {
+                    $endNumber = $startNumber + $totalParticipants - 1;
+                    $maxNumber = max($startNumber, $endNumber);
+                    $padding = strlen((string)$maxNumber); // Padding based on max number
+                } else {
+                    // Fallback: use start number length
+                    $padding = strlen($matches[1]);
+                }
                 
+                $autoNumber = str_pad($currentNumber, $padding, '0', STR_PAD_LEFT);
                 $certificateNumber = str_replace($matches[0], $autoNumber, $prefix);
             }
             // Check if prefix contains {AUTO} placeholder for flexible positioning (default start from 1)
             else if (strpos($prefix, '{AUTO}') !== false) {
-                // Replace {AUTO} with auto-incremented number starting from 1
-                $autoNumber = str_pad($certificateCounter, 3, '0', STR_PAD_LEFT);
+                // Dynamic padding based on total participants
+                if ($totalParticipants !== null && $totalParticipants > 0) {
+                    $endNumber = $totalParticipants;
+                    $padding = strlen((string)$endNumber); // Minimum 3 or based on total
+                    $padding = max(3, $padding); // Keep minimum 3 for {AUTO} without start number
+                } else {
+                    $padding = 3; // Default fallback
+                }
+                
+                $autoNumber = str_pad($certificateCounter, $padding, '0', STR_PAD_LEFT);
                 $certificateNumber = str_replace('{AUTO}', $autoNumber, $prefix);
             } 
             // Legacy support: Extract base number from prefix if it contains numbers at the end
