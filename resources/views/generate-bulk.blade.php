@@ -18,9 +18,19 @@
             </div>
             <form id="main-form" action="{{ route('certificates.bulk.download') }}" method="POST" enctype="multipart/form-data">
                 @csrf
+                {{-- Hidden fields for required data --}}
+                <input type="hidden" name="event_name" id="event_name">
+                <input type="hidden" name="certificate_type" id="certificate_type">
+                <input type="hidden" name="certificate_number_prefix" id="certificate_number_prefix">
+                <input type="hidden" name="start_date" id="start_date">
+                <input type="hidden" name="end_date" id="end_date">
+                <input type="hidden" name="signing_place" id="signing_place">
+                <input type="hidden" name="signing_date" id="signing_date">
+                <input type="hidden" name="descriptions[0]" id="hidden_description_1">
                 <input type="hidden" name="descriptions[1]" id="hidden_description_2">
                 <input type="hidden" name="descriptions[2]" id="hidden_description_3">
                 <input type="hidden" name="signature_count" id="hidden_signature_count">
+                <input type="hidden" name="template_json" id="template_json">
                 @for ($i = 0; $i < 3; $i++)
                     <input type="hidden" name="signatures[{{ $i }}][title]" id="hidden_signatures_{{ $i }}_title">
                     <input type="hidden" name="signatures[{{ $i }}][name]" id="hidden_signatures_{{ $i }}_name">
@@ -512,6 +522,50 @@
 
 @push('scripts')
 <script src="{{ asset('js/fabric.min.js') }}"></script>
+<script>
+// 🔧 COMPREHENSIVE PATCHES for Fabric.js
+(function() {
+    // Wait for fabric to be fully loaded
+    if (typeof fabric === 'undefined') {
+        console.warn('Fabric.js not loaded yet');
+        return;
+    }
+
+    // PATCH 1: Fix textBaseline 'alphabetical' warning
+    const descriptor = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'textBaseline');
+    if (descriptor && descriptor.set) {
+        const originalSetter = descriptor.set;
+        Object.defineProperty(CanvasRenderingContext2D.prototype, 'textBaseline', {
+            set: function(value) {
+                // Silently fix the typo
+                if (value === 'alphabetical') {
+                    value = 'alphabetic';
+                }
+                originalSetter.call(this, value);
+            },
+            get: descriptor.get,
+            enumerable: descriptor.enumerable,
+            configurable: descriptor.configurable
+        });
+    }
+
+    // PATCH 2: Fix getImageData performance warning
+    // Patch HTMLCanvasElement.getContext to add willReadFrequently by default
+    const originalGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function(contextType, contextAttributes) {
+        if (contextType === '2d' || contextType === 'bitmaprenderer') {
+            // Merge with default attributes
+            contextAttributes = contextAttributes || {};
+            if (typeof contextAttributes === 'object' && !('willReadFrequently' in contextAttributes)) {
+                contextAttributes.willReadFrequently = true;
+            }
+        }
+        return originalGetContext.call(this, contextType, contextAttributes);
+    };
+
+    console.log('✅ Fabric.js patches applied (textBaseline + willReadFrequently)');
+})();
+</script>
 <style>
     .karyawan-pagination .page-link {
         cursor: pointer;
@@ -1513,29 +1567,41 @@
 
         ensureHiddenField(field) {
             if (!field) return $();
-            const key = this.sanitizeFieldKey(field);
-            let hidden = $(`input[type="hidden"][name="${field}"]`).first();
+            
+            // First, try to find by name attribute
+            let hidden = $(`input[name="${field}"]`).first();
             if (hidden.length) {
-                if (!hidden.attr('id')) {
-                    hidden.attr('id', `hidden_${key}`);
-                }
                 return hidden;
             }
-
-            hidden = $(`#hidden_${key}`);
-            if (!hidden.length) {
-                const form = $('#main-form');
-                if (!form.length) {
-                    return $();
-                }
-                hidden = $('<input>', {
-                    type: 'hidden',
-                    id: `hidden_${key}`,
-                    name: field,
-                    value: ''
-                });
-                form.append(hidden);
+            
+            // Second, try by ID (for simple fields like event_name, certificate_type, etc.)
+            hidden = $(`#${field}`);
+            if (hidden.length) {
+                return hidden;
             }
+            
+            // Third, try sanitized key
+            const key = this.sanitizeFieldKey(field);
+            hidden = $(`#hidden_${key}`);
+            if (hidden.length) {
+                return hidden;
+            }
+            
+            // If not found, create new hidden field
+            const form = $('#main-form');
+            if (!form.length) {
+                console.warn('Form #main-form not found');
+                return $();
+            }
+            
+            hidden = $('<input>', {
+                type: 'hidden',
+                id: field.includes('[') ? `hidden_${key}` : field,
+                name: field,
+                value: ''
+            });
+            form.append(hidden);
+            
             return hidden;
         }
 
@@ -2010,10 +2076,25 @@
         });
         
         // 🎨 Configure canvas for better text quality
-        const ctx = canvas.getContext('2d');
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.textRendering = 'optimizeLegibility';
+        // 🔧 Safely access the underlying context
+        try {
+            const canvasElement = canvas.lowerCanvasEl || canvas.upperCanvasEl;
+            if (canvasElement) {
+                const ctx = canvasElement.getContext('2d', { willReadFrequently: true });
+                if (ctx) {
+                    ctx.imageSmoothingEnabled = true;
+                    ctx.imageSmoothingQuality = 'high';
+                    if ('textRendering' in ctx) {
+                        ctx.textRendering = 'optimizeLegibility';
+                    }
+                }
+            }
+        } catch (err) {
+            console.warn('Could not configure canvas context:', err);
+        }
+        
+        // 🔧 Ensure initial render
+        canvas.renderAll();
 
         // 🔄 Initialize Undo/Redo Manager
         window.undoRedoManager = new UndoRedoManager(canvas);
@@ -5418,10 +5499,20 @@
         const currentValue = selectedDivisi || select.val();
         
         let html = '<option value="">Semua Divisi</option>';
-        divisiList.forEach(function(divisi) {
-            const selected = divisi === currentValue ? 'selected' : '';
-            html += `<option value="${divisi}" ${selected}>${divisi}</option>`;
-        });
+        
+        // 🔧 Check if divisiList is an array, if not convert or handle gracefully
+        if (Array.isArray(divisiList)) {
+            divisiList.forEach(function(divisi) {
+                const selected = divisi === currentValue ? 'selected' : '';
+                html += `<option value="${divisi}" ${selected}>${divisi}</option>`;
+            });
+        } else if (divisiList && typeof divisiList === 'object') {
+            // If it's an object, try to iterate its values
+            Object.values(divisiList).forEach(function(divisi) {
+                const selected = divisi === currentValue ? 'selected' : '';
+                html += `<option value="${divisi}" ${selected}>${divisi}</option>`;
+            });
+        }
         
         select.html(html);
     }
@@ -5674,8 +5765,39 @@
 
     // ========== PREVIEW SUBMISSION ==========
     function handlePreview(canvas) {
+        // 🔧 Validate canvas is ready
+        if (!canvas) {
+            alert('Canvas tidak ditemukan. Silakan refresh halaman.');
+            console.error('Canvas is null or undefined');
+            return;
+        }
+        
+        // Check if canvas has the underlying canvas element
+        const canvasElement = canvas.lowerCanvasEl || canvas.upperCanvasEl;
+        if (!canvasElement) {
+            alert('Canvas element tidak ditemukan. Silakan refresh halaman.');
+            console.error('Canvas element is null');
+            return;
+        }
+        
+        // Ensure canvas is rendered
+        try {
+            canvas.renderAll();
+        } catch (err) {
+            console.error('Error rendering canvas:', err);
+            alert('Terjadi kesalahan saat memproses canvas. Silakan coba lagi.');
+            return;
+        }
+        
         // Update template JSON
-        const templateJson = JSON.stringify(canvas.toJSON(['isPlaceholder', 'isSignatureBlock', 'signatureIndex', 'areaKey', 'isSignatureName', 'isSignatureTitle']));
+        let templateJson;
+        try {
+            templateJson = JSON.stringify(canvas.toJSON(['isPlaceholder', 'isSignatureBlock', 'signatureIndex', 'areaKey', 'isSignatureName', 'isSignatureTitle']));
+        } catch (err) {
+            console.error('Error converting canvas to JSON:', err);
+            alert('Terjadi kesalahan saat menyimpan template. Silakan coba lagi.');
+            return;
+        }
         
         // Get main form and create FormData from it
         const mainForm = document.getElementById('main-form');
@@ -5736,6 +5858,58 @@
 
     // ========== GENERATE SUBMISSION ==========
     function handleGenerate(canvas) {
+        // 🔧 Validate canvas is ready and has proper context
+        if (!canvas) {
+            alert('Canvas tidak ditemukan. Silakan refresh halaman.');
+            console.error('Canvas is null or undefined');
+            return;
+        }
+        
+        // Check if canvas has the underlying canvas element
+        const canvasElement = canvas.lowerCanvasEl || canvas.upperCanvasEl;
+        if (!canvasElement) {
+            alert('Canvas element tidak ditemukan. Silakan refresh halaman.');
+            console.error('Canvas element is null');
+            return;
+        }
+        
+        // Check if context is available
+        try {
+            const ctx = canvasElement.getContext('2d');
+            if (!ctx) {
+                alert('Canvas context tidak tersedia. Silakan tunggu sebentar dan coba lagi.');
+                console.error('Canvas context is null');
+                return;
+            }
+        } catch (err) {
+            console.error('Error getting canvas context:', err);
+            alert('Terjadi kesalahan saat mengakses canvas. Silakan refresh halaman.');
+            return;
+        }
+
+        // 🆕 VALIDATE REQUIRED FIELDS BEFORE SUBMITTING
+        const eventName = $('input[name="event_name"]').val();
+        const certificateType = $('input[name="certificate_type"]').val();
+        const startDate = $('input[name="start_date"]').val();
+        const endDate = $('input[name="end_date"]').val();
+        const signingDate = $('input[name="signing_date"]').val();
+        const signingPlace = $('input[name="signing_place"]').val();
+        const certificateNumberPrefix = $('input[name="certificate_number_prefix"]').val();
+
+        const missingFields = [];
+        if (!eventName) missingFields.push('Nama Acara (@{{nama_acara}})');
+        if (!certificateType) missingFields.push('Jenis Sertifikat (@{{jenis_sertifikat}})');
+        if (!startDate || !endDate) missingFields.push('Tanggal Acara (@{{tanggal_acara}})');
+        if (!signingDate || !signingPlace) missingFields.push('Tanggal & Tempat Penandatanganan (@{{tanggal_penandatanganan}})');
+        if (!certificateNumberPrefix) missingFields.push('Format Nomor Sertifikat (@{{nomor_sertifikat}})');
+
+        if (missingFields.length > 0) {
+            alert('Mohon lengkapi placeholder berikut terlebih dahulu:\\n\\n' + 
+                  missingFields.join('\\n') + 
+                  '\\n\\nKlik placeholder di canvas untuk mengisi data.');
+            return;
+        }
+
         // Validate data source
         const dataSource = $('input[name="data_source"]:checked').val();
         
@@ -5759,7 +5933,32 @@
             }
         }
 
-    $('#template_json').val(JSON.stringify(canvas.toJSON(['isPlaceholder', 'isSignatureBlock', 'signatureIndex', 'areaKey', 'isSignatureName', 'isSignatureTitle'])));
+        // 🔧 Ensure canvas is rendered before converting to JSON/DataURL
+        try {
+            // Deselect all objects to avoid selection artifacts
+            canvas.discardActiveObject();
+            canvas.renderAll();
+            
+            // Longer delay to ensure render is complete and context is ready
+            setTimeout(() => {
+                proceedWithGenerate(canvas);
+            }, 300);
+        } catch (err) {
+            console.error('Error rendering canvas:', err);
+            alert('Terjadi kesalahan saat memproses canvas. Silakan coba lagi.');
+            return;
+        }
+    }
+    
+    function proceedWithGenerate(canvas) {
+        try {
+            $('#template_json').val(JSON.stringify(canvas.toJSON(['isPlaceholder', 'isSignatureBlock', 'signatureIndex', 'areaKey', 'isSignatureName', 'isSignatureTitle'])));
+        } catch (err) {
+            console.error('Error converting canvas to JSON:', err);
+            alert('Terjadi kesalahan saat menyimpan template. Silakan coba lagi.');
+            return;
+        }
+        
         const form = document.getElementById('main-form');
         const formData = new FormData(form);
 
@@ -5767,7 +5966,82 @@
         const bar = document.getElementById('progress-bar');
         bar.style.width = '0%'; bar.innerText = '0%';
 
-        const dataUrl = canvas.toDataURL({ format: 'png' });
+        // 🔧 ROBUST SOLUTION: Export canvas using multiple fallback methods
+        let dataUrl;
+        
+        try {
+            // Method 1: Direct export from lower canvas (fastest, most reliable)
+            const canvasEl = canvas.lowerCanvasEl;
+            if (!canvasEl) {
+                throw new Error('Canvas element not found');
+            }
+            
+            // Ensure canvas is fully rendered
+            canvas.renderAll();
+            
+            // Use the native canvas toDataURL
+            dataUrl = canvasEl.toDataURL('image/png', 1.0);
+            
+            // Validate the result
+            if (!dataUrl || dataUrl.length < 100 || !dataUrl.startsWith('data:image')) {
+                throw new Error('Invalid data URL generated');
+            }
+            
+        } catch (err1) {
+            console.warn('Method 1 (lowerCanvasEl) failed:', err1);
+            
+            try {
+                // Method 2: Use fabric's toDataURL with minimal options
+                canvas.renderAll();
+                dataUrl = canvas.toDataURL('png');
+                
+                if (!dataUrl || dataUrl.length < 100) {
+                    throw new Error('Invalid data URL');
+                }
+                
+            } catch (err2) {
+                console.warn('Method 2 (fabric toDataURL) failed:', err2);
+                
+                try {
+                    // Method 3: Create a new canvas and manually render
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = canvas.width;
+                    tempCanvas.height = canvas.height;
+                    const tempCtx = tempCanvas.getContext('2d', { 
+                        willReadFrequently: false,
+                        alpha: true 
+                    });
+                    
+                    // Clear canvas
+                    tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+                    
+                    // Draw background color
+                    if (canvas.backgroundColor) {
+                        tempCtx.fillStyle = canvas.backgroundColor;
+                        tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+                    }
+                    
+                    // Copy from fabric canvas
+                    if (canvas.lowerCanvasEl) {
+                        tempCtx.drawImage(canvas.lowerCanvasEl, 0, 0);
+                    }
+                    
+                    dataUrl = tempCanvas.toDataURL('image/png', 1.0);
+                    
+                    if (!dataUrl || dataUrl.length < 100) {
+                        throw new Error('Failed to generate valid image');
+                    }
+                    
+                } catch (err3) {
+                    console.error('All export methods failed:', err3);
+                    alert('Tidak dapat mengkonversi canvas ke gambar. Silakan:\n1. Refresh halaman\n2. Muat ulang template\n3. Coba lagi');
+                    $('#progress-bar-wrapper').hide();
+                    return;
+                }
+            }
+        }
+        
+        console.log('Canvas export successful, data URL length:', dataUrl.length);
         formData.append('canvas_image', dataUrl);
 
         fetch(form.action, {
@@ -5775,16 +6049,40 @@
             headers: {'X-CSRF-TOKEN': document.querySelector('input[name="_token"]').value},
             body: formData
         })
-        .then(response => response.json())
+        .then(response => {
+            // Check if response is OK
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            // Check content type
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                // If not JSON, try to get text for debugging
+                return response.text().then(text => {
+                    console.error('Server returned non-JSON response:', text.substring(0, 500));
+                    throw new Error('Server mengembalikan response yang tidak valid. Periksa console untuk detail.');
+                });
+            }
+            
+            return response.json();
+        })
         .then(data => {
             if (data.batchId) {
                 startPolling(data.batchId);
+            } else if (data.error) {
+                throw new Error(data.error);
+            } else {
+                throw new Error('Response tidak mengandung batchId');
             }
         })
         .catch(error => {
             console.error('Error:', error);
             bar.classList.add('bg-danger');
-            bar.innerText = '❌ Terjadi kesalahan';
+            bar.innerText = '❌ ' + (error.message || 'Terjadi kesalahan');
+            
+            // Show more detailed alert
+            alert('Terjadi kesalahan saat generate sertifikat:\n\n' + error.message + '\n\nSilakan periksa:\n1. File data peserta sudah valid\n2. Template sudah disimpan\n3. Semua field wajib sudah diisi');
         });
     }
 
