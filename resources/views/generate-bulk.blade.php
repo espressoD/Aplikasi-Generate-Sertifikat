@@ -16,7 +16,7 @@
             <div class="card-header">
                 <h3 class="card-title">Langkah 1: Pilih Sumber Data & Generate</h3>
             </div>
-            <form id="main-form" action="{{ route('certificates.bulk.download') }}" method="POST" enctype="multipart/form-data">
+            <form id="main-form" action="{{ route('certificates.bulk.generate') }}" method="POST" enctype="multipart/form-data">
                 @csrf
                 {{-- Hidden fields for required data --}}
                 <input type="hidden" name="event_name" id="event_name">
@@ -31,6 +31,7 @@
                 <input type="hidden" name="descriptions[2]" id="hidden_description_3">
                 <input type="hidden" name="signature_count" id="hidden_signature_count">
                 <input type="hidden" name="template_json" id="template_json">
+                <input type="hidden" name="template_id" id="template_id">
                 @for ($i = 0; $i < 3; $i++)
                     <input type="hidden" name="signatures[{{ $i }}][title]" id="hidden_signatures_{{ $i }}_title">
                     <input type="hidden" name="signatures[{{ $i }}][name]" id="hidden_signatures_{{ $i }}_name">
@@ -5023,6 +5024,9 @@
         $('.load-template-btn').on('click', function() {
             const id = $(this).data('template-id');
             if (id && templates[id]) {
+                // Store template ID for submission
+                $('#template_id').val(id);
+                
                 const json = JSON.parse(templates[id].template_data);
                 canvas.loadFromJSON(json, () => {
                     // Backfill areaKey for any objects missing it
@@ -5116,7 +5120,7 @@
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
                 body: JSON.stringify({
                     name: name,
-                    template_data: JSON.stringify(canvas.toJSON(['isPlaceholder', 'isSignatureBlock', 'signatureIndex', 'areaKey', 'isSignatureName', 'isSignatureTitle']))
+                    template_data: JSON.stringify(canvas.toJSON(['isPlaceholder', 'placeholderType', 'isSignatureBlock', 'signatureIndex', 'signatureField', 'areaKey', 'isSignatureName', 'isSignatureTitle']))
                 })
             }).then(res => res.json()).then(data => {
                 if (data.success) {
@@ -5792,7 +5796,7 @@
         // Update template JSON
         let templateJson;
         try {
-            templateJson = JSON.stringify(canvas.toJSON(['isPlaceholder', 'isSignatureBlock', 'signatureIndex', 'areaKey', 'isSignatureName', 'isSignatureTitle']));
+            templateJson = JSON.stringify(canvas.toJSON(['isPlaceholder', 'placeholderType', 'isSignatureBlock', 'signatureIndex', 'signatureField', 'areaKey', 'isSignatureName', 'isSignatureTitle']));
         } catch (err) {
             console.error('Error converting canvas to JSON:', err);
             alert('Terjadi kesalahan saat menyimpan template. Silakan coba lagi.');
@@ -5952,7 +5956,7 @@
     
     function proceedWithGenerate(canvas) {
         try {
-            $('#template_json').val(JSON.stringify(canvas.toJSON(['isPlaceholder', 'isSignatureBlock', 'signatureIndex', 'areaKey', 'isSignatureName', 'isSignatureTitle'])));
+            $('#template_json').val(JSON.stringify(canvas.toJSON(['isPlaceholder', 'placeholderType', 'isSignatureBlock', 'signatureIndex', 'signatureField', 'areaKey', 'isSignatureName', 'isSignatureTitle'])));
         } catch (err) {
             console.error('Error converting canvas to JSON:', err);
             alert('Terjadi kesalahan saat menyimpan template. Silakan coba lagi.');
@@ -6068,12 +6072,26 @@
             return response.json();
         })
         .then(data => {
-            if (data.batchId) {
+            // NEW: Handle project-based workflow
+            if (data.success && data.redirect_url) {
+                bar.classList.remove('progress-bar-animated');
+                bar.classList.remove('progress-bar-striped');
+                bar.classList.add('bg-success');
+                bar.style.width = '100%';
+                bar.innerText = `✅ ${data.total_certificates} canvas states created! Redirecting to editor...`;
+                
+                // Redirect to project editor (no alert, smoother UX)
+                setTimeout(() => {
+                    window.location.href = data.redirect_url;
+                }, 1000);
+            }
+            // LEGACY: Old batch workflow (for backward compatibility)
+            else if (data.batchId) {
                 startPolling(data.batchId);
             } else if (data.error) {
                 throw new Error(data.error);
             } else {
-                throw new Error('Response tidak mengandung batchId');
+                throw new Error('Response tidak mengandung data yang valid');
             }
         })
         .catch(error => {

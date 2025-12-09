@@ -41,10 +41,18 @@
             const canvas = new fabric.Canvas('certificate-canvas', {
                 width: 1123,
                 height: 794,
+                backgroundColor: templateData.backgroundColor || '#ffffff'
             });
 
-            // Muat template dari JSON
+            console.log('Starting canvas load...');
+            console.log('Template objects count:', templateData.objects?.length || 0);
+            console.log('Has background image:', templateData.backgroundImage ? 'Yes' : 'No');
+            console.log('Background color:', templateData.backgroundColor);
+            
+            // Muat template dari JSON dengan callback revision
             canvas.loadFromJSON(templateData, function() {
+                console.log('Canvas loaded, processing objects...');
+                console.log('Background image after load:', canvas.backgroundImage ? 'Yes' : 'No');
                 // Manipulasi objek SETELAH kanvas dimuat
                 canvas.getObjects().forEach(function(obj) {
                     // KASUS 1: Grup tanda tangan (Logic from old version - exact copy)
@@ -171,10 +179,21 @@
                 // Tampilkan kanvas dan sembunyikan loader
                 document.getElementById('loader').style.display = 'none';
                 canvas.getElement().style.display = 'block';
+                
+                console.log('Final render...');
                 canvas.renderAll();
+                
+                console.log('Canvas ready, objects:', canvas.getObjects().length);
+                console.log('Canvas dimensions:', canvas.width, 'x', canvas.height);
 
                 // Beri sinyal selesai ke Browsershot
-                window.__done__ = true;
+                setTimeout(function() {
+                    window.__done__ = true;
+                    console.log('Renderer done!');
+                }, 500);
+            }, function(o, object) {
+                // Reviver function - dipanggil untuk setiap objek yang di-load
+                console.log('Loading object:', object.type, object);
             });
         });
 

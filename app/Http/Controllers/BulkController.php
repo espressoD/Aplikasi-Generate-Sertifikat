@@ -18,6 +18,7 @@ use Illuminate\Validation\ValidationException;
 use Intervention\Image\ImageManagerStatic as Image;
 use App\Jobs\GenerateCertificateJob;
 use App\CertificateBatch;
+use App\CertificateProject;
 use Illuminate\Support\Facades\Cache;
 
 
@@ -165,6 +166,14 @@ class BulkController extends Controller
         try {
             set_time_limit(0);
             ini_set('memory_limit', '512M');
+            
+            // Log incoming request
+            Log::info('storeAndDownloadZip called', [
+                'data_source' => $request->data_source,
+                'event_name' => $request->event_name,
+                'has_file' => $request->hasFile('participant_file'),
+                'has_template' => $request->has('template_json'),
+            ]);
 
             $request->validate([
                 'event_name' => 'required|string|max:255',
@@ -175,39 +184,43 @@ class BulkController extends Controller
                 'signing_place' => 'required|string|max:100',
                 'certificate_number_prefix' => 'required|string|max:50',
                 'template_json' => 'required|json',
+                'template_id' => 'required|exists:certificate_templates,id',
                 'data_source' => 'required|in:file,database',
                 'participant_file' => 'required_if:data_source,file|file|mimes:csv,xlsx,txt',
                 'selected_karyawan' => 'required_if:data_source,database|array|min:1',
             ]);
 
-            $batchId = uniqid();
-            $outputDir = storage_path("app/temp_certificates/{$batchId}");
-            File::makeDirectory($outputDir, 0755, true, true);
+            \DB::reconnect();
 
             $templateJson = json_decode($request->template_json, true);
-            $signatureData = $this->prepareSignatureData($request);
-            $signaturesPaths = [];
-            if ($request->hasFile('signatures')) {
-                foreach ($request->file('signatures') as $key => $file) {
-                    // Simpan file sementara dan dapatkan path-nya
-                    $path = $file->store("temp_signatures/{$batchId}", 'local');
-                    $signaturesPaths[$key] = storage_path('app/' . $path);
+            
+            // Prepare signature data
+            $signatureData = [];
+            if ($request->has('signatures')) {
+                foreach ($request->signatures as $key => $sig) {
+                    $signatureData[$key] = [
+                        'name'  => $sig['name'] ?? '',
+                        'title' => $sig['title'] ?? '',
+                    ];
+                    
+                    if ($request->hasFile("signatures.{$key}.image")) {
+                        $file = $request->file("signatures.{$key}.image");
+                        $imageContents = file_get_contents($file->getRealPath());
+                        $mimeType = $file->getMimeType();
+                        $signatureData[$key]['image_base64'] = 'data:' . $mimeType . ';base64,' . base64_encode($imageContents);
+                    }
                 }
             }
 
             // Prepare participants based on data source
             $participants = [];
             if ($request->data_source === 'file') {
-                // Handle large files with chunking to avoid memory issues
                 try {
-                    // Reconnect database before processing file
                     \DB::reconnect();
                     
                     $file = $request->file('participant_file');
-                    $fileExtension = $file->getClientOriginalExtension();
                     
-                    // For large files, use chunked reading
-                    if ($file->getSize() > 1024 * 1024) { // Files larger than 1MB
+                    if ($file->getSize() > 1024 * 1024) {
                         Log::info("Processing large file ({$file->getSize()} bytes) with chunking");
                         $participants = $this->processLargeFile($file);
                     } else {
@@ -222,187 +235,170 @@ class BulkController extends Controller
                     throw new \Exception("Gagal memproses file: " . $e->getMessage());
                 }
             } else {
-                // From database
                 $selectedKaryawan = Karyawan::whereIn('id', $request->selected_karyawan)->get();
                 foreach ($selectedKaryawan as $karyawan) {
                     $participants[] = [
                         $karyawan->nama,
-                        '', // email - empty for database source
-                        'Peserta', // default role
+                        '',
+                        'Peserta',
                         $karyawan->npk_id,
                         $karyawan->divisi,
-                        '-', // nilai_1
-                        '-', // nilai_2  
-                        '-', // nilai_3
-                        '-', // nilai_4
+                        '-', '-', '-', '-',
                     ];
                 }
             }
 
-            $jobCount = 0;
-            $counter = 1;
-            $jobsToDispatch = []; // Collect jobs for batched dispatch
-            
-            // Calculate total participants for dynamic padding (exclude header if file source)
+            // Calculate total participants (exclude header if file source)
             $totalParticipants = count($participants);
             if ($request->data_source === 'file') {
-                $totalParticipants = max(0, $totalParticipants - 1); // Exclude header row
+                $totalParticipants = max(0, $totalParticipants - 1);
             }
             
-            Log::info("Starting to process " . count($participants) . " participants");
-            Log::info("Total participants for padding calculation: " . $totalParticipants);
+            // Create Certificate Project
+            $project = CertificateProject::create([
+                'project_name' => $request->event_name . ' - ' . now()->format('Y-m-d H:i'),
+                'event_name' => $request->event_name,
+                'template_id' => $request->template_id,
+                'global_settings' => [
+                    'certificate_type' => $request->certificate_type,
+                    'start_date' => $request->start_date,
+                    'end_date' => $request->end_date,
+                    'signing_date' => $request->signing_date,
+                    'signing_place' => $request->signing_place,
+                    'certificate_number_prefix' => $request->certificate_number_prefix,
+                    'signatures' => $signatureData,
+                ],
+                'total_certificates' => $totalParticipants,
+                'status' => 'draft',
+            ]);
+
+            Log::info("Created project #{$project->id} with {$totalParticipants} certificates");
+
+            // Generate canvas states for each participant
+            $counter = 1;
+            $createdCount = 0;
             
-            // Reconnect database before processing participants
+            // Ensure fresh database connection before bulk inserts
+            \DB::disconnect();
             \DB::reconnect();
             
             foreach ($participants as $key => $participant) {
-                // Skip header row only for file source
+                // Skip header row for file source
                 if ($request->data_source === 'file' && $key === 0) continue;
 
                 $recipientName = trim($participant[0] ?? '');
                 if (!$recipientName) continue;
 
-                $signatureDataForJob = [];
+                // Prepare signature data for this participant
+                $participantSignatures = [];
                 if (isset($request->signatures)) {
                     foreach($request->signatures as $sigKey => $sig) {
-                        $signatureDataForJob[$sigKey] = [
+                        $participantSignatures[$sigKey] = [
                             'name' => $sig['name'] ?? '',
                             'title' => $sig['title'] ?? '',
                         ];
                         
-                        // Add signature image processing for bulk generation
                         if ($request->hasFile("signatures.{$sigKey}.image")) {
                             $file = $request->file("signatures.{$sigKey}.image");
                             $imageContents = file_get_contents($file->getRealPath());
                             $mimeType = $file->getMimeType();
-                            $signatureDataForJob[$sigKey]['image_base64'] = 'data:' . $mimeType . ';base64,' . base64_encode($imageContents);
+                            $participantSignatures[$sigKey]['image_base64'] = 'data:' . $mimeType . ';base64,' . base64_encode($imageContents);
                         }
                     }
                 }
 
-                // Pass totalParticipants for dynamic padding calculation
-                $participantData = $this->prepareParticipantData($request, $participant, $signatureDataForJob, $counter, $totalParticipants);
-                $participantData['event_name'] = $request->event_name; // pastikan ini disertakan
+                // Prepare participant data
+                $participantData = $this->prepareParticipantData($request, $participant, $participantSignatures, $counter, $totalParticipants);
+                $participantData['event_name'] = $request->event_name;
                 
-                $imageData = $request->input('canvas_image');
-                $canvasImagePath = storage_path("app/canvas-{$batchId}.png");
-    
-                if ($imageData && $jobCount === 0) { // Only save canvas image once
-                    $image = str_replace('data:image/png;base64,', '', $imageData);
-                    $image = str_replace(' ', '+', $image);
-                    file_put_contents($canvasImagePath, base64_decode($image));
-                }
-
-                // Collect job data instead of dispatching immediately
-                $jobsToDispatch[] = [
-                    'batchId' => $batchId,
-                    'templateJson' => $request->template_json,
-                    'participantData' => $participantData,
-                    'recipientName' => $recipientName,
-                    'outputDir' => $outputDir,
-                    'eventName' => $request->event_name,
-                    'canvasImagePath' => $canvasImagePath,
-                    'counter' => $counter++,
-                    'signaturesPaths' => $signaturesPaths,
-                ];
-
-                $jobCount++;
+                // Generate canvas state
+                $canvasState = $this->generateCanvasState($request->template_json, $participantData, $participantSignatures);
                 
-                // Different dispatch strategy based on data source
-                if ($request->data_source === 'file') {
-                    // For file source, dispatch individually to avoid batch-related issues
-                    try {
-                        \DB::reconnect(); // Reconnect before each dispatch for file source
-                        dispatch(new GenerateCertificateJob(end($jobsToDispatch))); // Dispatch the last added job
-                        array_pop($jobsToDispatch); // Remove it from batch after successful dispatch
-                        Log::info("Dispatched individual job #{$jobCount} for file source");
-                    } catch (\Exception $e) {
-                        Log::error("Failed to dispatch individual job #{$jobCount}: " . $e->getMessage());
-                        // Continue with next job instead of failing completely
-                    }
-                } else {
-                    // For database source, use batch dispatch (original method)
-                    if (count($jobsToDispatch) >= 10) {
+                if ($canvasState) {
+                    // Retry mechanism for MySQL connection issues
+                    $retryCount = 0;
+                    $maxRetries = 3;
+                    $created = false;
+                    
+                    while (!$created && $retryCount < $maxRetries) {
                         try {
-                            $this->dispatchJobBatch($jobsToDispatch);
-                            $jobsToDispatch = []; // Reset batch only if successful
-                        } catch (\Exception $e) {
-                            Log::error("Failed to dispatch batch, will retry individually: " . $e->getMessage());
-                            
-                            // Try to dispatch jobs individually as fallback
-                            foreach ($jobsToDispatch as $singleJob) {
-                                try {
-                                    \DB::reconnect();
-                                    dispatch(new GenerateCertificateJob($singleJob));
-                                } catch (\Exception $singleError) {
-                                    Log::error("Failed to dispatch individual job: " . $singleError->getMessage());
-                                    // Continue with next job instead of failing completely
-                                }
-                            }
-                            $jobsToDispatch = []; // Reset after individual dispatch attempts
-                        }
-                        
-                        // Reconnect database and small delay
-                        \DB::reconnect();
-                        usleep(100000); // 0.1 second delay
-                    }
-                }
-            }
-            
-            // Dispatch remaining jobs based on data source
-            if (!empty($jobsToDispatch)) {
-                if ($request->data_source === 'database') {
-                    // Only dispatch batch for database source
-                    try {
-                        $this->dispatchJobBatch($jobsToDispatch);
-                    } catch (\Exception $e) {
-                        Log::error("Failed to dispatch final batch, trying individually: " . $e->getMessage());
-                        
-                        // Try to dispatch remaining jobs individually as fallback
-                        foreach ($jobsToDispatch as $singleJob) {
-                            try {
+                            // Reconnect before each insert to ensure fresh connection
+                            if ($retryCount > 0) {
                                 \DB::reconnect();
-                                dispatch(new GenerateCertificateJob($singleJob));
-                            } catch (\Exception $singleError) {
-                                Log::error("Failed to dispatch final individual job: " . $singleError->getMessage());
-                                // Continue with next job instead of failing completely
+                                sleep(1); // Wait 1 second before retry
+                            }
+                            
+                            // Create certificate with canvas state (NOT PDF)
+                            Certificate::create([
+                                'project_id' => $project->id,
+                                'recipient_name' => $recipientName,
+                                'event_name' => $request->event_name,
+                                'event_date' => $request->start_date,
+                                'certificate_number' => $participantData['certificateNumber'],
+                                'canvas_state' => $canvasState,
+                                'participant_data' => json_encode($participantData),
+                                'template_data' => $request->template_json,
+                                'page_order' => $counter,
+                                'is_edited' => false,
+                            ]);
+                            
+                            $created = true;
+                            $createdCount++;
+                            
+                        } catch (\Illuminate\Database\QueryException $e) {
+                            $retryCount++;
+                            
+                            if (strpos($e->getMessage(), 'MySQL server has gone away') !== false || 
+                                strpos($e->getMessage(), 'Lost connection') !== false) {
+                                
+                                Log::warning("Database connection lost on certificate {$counter}, retrying... Attempt {$retryCount}/{$maxRetries}");
+                                
+                                if ($retryCount >= $maxRetries) {
+                                    throw $e; // Re-throw after max retries
+                                }
+                            } else {
+                                throw $e; // Re-throw if it's not a connection issue
                             }
                         }
                     }
-                } else {
-                    // For file source, remaining jobs should already be dispatched individually
-                    Log::info("File source: all jobs dispatched individually, no remaining batch");
+                }
+
+                $counter++;
+                
+                // Reconnect periodically to avoid timeout
+                if ($counter % 50 === 0) {
+                    \DB::reconnect();
                 }
             }
             
-            Log::info("All {$jobCount} jobs dispatched successfully for batch {$batchId}");
+            Log::info("Created {$createdCount} certificates for project #{$project->id}");
 
-            Cache::put("bulk_jobs_{$batchId}_remaining", $jobCount, now()->addMinutes(30));
-            Cache::put("bulk_jobs_{$batchId}_total", $jobCount, now()->addMinutes(30));
-            
-            // Reconnect to database before creating batch record
-            \DB::reconnect();
-            
-            // Create CertificateBatch record in database
-            CertificateBatch::create([
-                'batch_id' => $batchId,
-                'event_name' => $request->event_name,
-                'total_jobs' => $jobCount,
-                'completed_jobs' => 0,
-                'is_zipped' => false,
-            ]);
-            
-
-
+            // Redirect to project editor instead of starting PDF generation
             return response()->json([
-                'message' => 'Proses dimulai',
-                'batchId' => $batchId,
+                'success' => true,
+                'message' => 'Project berhasil dibuat',
+                'project_id' => $project->id,
+                'total_certificates' => $createdCount,
+                'redirect_url' => route('projects.edit', $project->id),
             ]);
+            
         } catch (ValidationException $e) {
+            Log::error('Validation failed', ['errors' => $e->errors()]);
             throw $e;
         } catch (Throwable $e) {
-            Log::error('Error saat dispatch queue: ' . $e->getMessage());
-            return back()->withErrors(['error' => 'Terjadi kesalahan: ' . $e->getMessage()]);
+            Log::error('Error creating project: ' . $e->getMessage(), [
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan: ' . $e->getMessage(),
+                'debug' => config('app.debug') ? [
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                ] : null
+            ], 500);
         }
     }
 
@@ -540,6 +536,7 @@ class BulkController extends Controller
             'event_date'        => $startDate->format('Y-m-d'), // MySQL format for database
             'eventDate'         => $formattedEventDate, // Formatted for display
             'signingDate'       => $fullSigningLocation, // Combined place and date
+            'signingLocation'   => $fullSigningLocation, // Alias for template compatibility
             'description1'      => isset($request->descriptions) ? ($request->descriptions[0] ?? '') : '',
             'description2'      => isset($request->descriptions) ? ($request->descriptions[1] ?? '') : '',
             'description3'      => isset($request->descriptions) ? ($request->descriptions[2] ?? '') : '',
@@ -549,6 +546,119 @@ class BulkController extends Controller
             'certificateNumber' => $certificateNumber,
             'certificate_number' => $certificateNumber, // Add both for compatibility
         ];
+    }
+
+    /**
+     * Generate canvas state JSON for a single participant
+     * This replaces direct PDF generation in the new project-based workflow
+     */
+    private function generateCanvasState($templateJson, $participantData, $signatureData = [])
+    {
+        $canvasData = json_decode($templateJson, true);
+        
+        if (!isset($canvasData['objects'])) {
+            return null;
+        }
+
+        // Process each object in the template
+        foreach ($canvasData['objects'] as &$object) {
+            // Handle text placeholders (both textbox and i-text types)
+            $isTextObject = isset($object['type']) && in_array($object['type'], ['textbox', 'i-text', 'text']);
+            
+            if ($isTextObject && isset($object['isPlaceholder']) && $object['isPlaceholder']) {
+                $placeholderType = $object['placeholderType'] ?? '';
+                
+                // Replace placeholder with actual data
+                // Support both @{{}} and {{}} formats
+                switch ($placeholderType) {
+                    case '@{{nama_penerima}}':
+                    case '{{nama_penerima}}':
+                        $object['text'] = $participantData['recipientName'] ?? '';
+                        break;
+                    case '@{{nama_acara}}':
+                    case '{{nama_acara}}':
+                        $object['text'] = $participantData['event_name'] ?? '';
+                        break;
+                    case '@{{tanggal_acara}}':
+                    case '{{tanggal_acara}}':
+                        $object['text'] = $participantData['eventDate'] ?? '';
+                        break;
+                    case '@{{nomor_sertifikat}}':
+                    case '{{nomor_sertifikat}}':
+                        $object['text'] = $participantData['certificateNumber'] ?? '';
+                        break;
+                    case '@{{jenis_sertifikat}}':
+                    case '{{jenis_sertifikat}}':
+                        $object['text'] = $participantData['certificateType'] ?? '';
+                        break;
+                    case '@{{deskripsi_acara}}':
+                    case '{{deskripsi_acara}}':
+                        $object['text'] = $participantData['eventDescription'] ?? '';
+                        break;
+                    case '@{{tempat_tanggal_ttd}}':
+                    case '{{tempat_tanggal_ttd}}':
+                    case '@{{tanggal_penandatanganan}}':
+                    case '{{tanggal_penandatanganan}}':
+                        $object['text'] = $participantData['signingLocation'] ?? '';
+                        break;
+                    case '@{{id_divisi}}':
+                    case '{{id_divisi}}':
+                    case '@{{id_lengkap_peserta}}':
+                    case '{{id_lengkap_peserta}}':
+                        $object['text'] = $participantData['recipientFullId'] ?? '';
+                        break;
+                    case '@{{peran_penerima}}':
+                    case '{{peran_penerima}}':
+                        $object['text'] = $participantData['recipientRole'] ?? '';
+                        break;
+                    // Nilai fields
+                    case '@{{nilai_1}}':
+                    case '{{nilai_1}}':
+                        $object['text'] = $participantData['nilai1'] ?? '-';
+                        break;
+                    case '@{{nilai_2}}':
+                    case '{{nilai_2}}':
+                        $object['text'] = $participantData['nilai2'] ?? '-';
+                        break;
+                    case '@{{nilai_3}}':
+                    case '{{nilai_3}}':
+                        $object['text'] = $participantData['nilai3'] ?? '-';
+                        break;
+                    case '@{{nilai_4}}':
+                    case '{{nilai_4}}':
+                        $object['text'] = $participantData['nilai4'] ?? '-';
+                        break;
+                }
+            }
+            
+            // Handle signature blocks (groups)
+            if (isset($object['type']) && $object['type'] === 'group' && isset($object['isSignatureBlock']) && $object['isSignatureBlock']) {
+                $sigIndex = $object['signatureIndex'] ?? 0;
+                
+                if (isset($signatureData[$sigIndex]) && isset($object['objects'])) {
+                    foreach ($object['objects'] as &$childObj) {
+                        if ($childObj['type'] === 'textbox') {
+                            // Update signature name
+                            if (isset($childObj['signatureField']) && $childObj['signatureField'] === 'name') {
+                                $childObj['text'] = $signatureData[$sigIndex]['name'] ?? '';
+                            }
+                            // Update signature title
+                            if (isset($childObj['signatureField']) && $childObj['signatureField'] === 'title') {
+                                $childObj['text'] = $signatureData[$sigIndex]['title'] ?? '';
+                            }
+                        }
+                        // Update signature image
+                        if ($childObj['type'] === 'image' && isset($childObj['signatureField']) && $childObj['signatureField'] === 'image') {
+                            if (isset($signatureData[$sigIndex]['image_base64'])) {
+                                $childObj['src'] = $signatureData[$sigIndex]['image_base64'];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return $canvasData;
     }
 
     /**

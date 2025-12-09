@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Certificate; // Individual certificates (if any)
 use App\CertificateBatch; // New batch system
+use App\CertificateProject; // Certificate projects
 use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
@@ -16,6 +17,15 @@ class DashboardController extends Controller
         
         // FIXED: Only count distinct events (regardless of source)
         $totalEvents = Certificate::distinct('event_name')->count();
+        
+        // Total projects count
+        $totalProjects = CertificateProject::count();
+        
+        // Recent projects (last 5)
+        $recentProjects = CertificateProject::with('template')
+            ->latest()
+            ->take(5)
+            ->get();
 
         // Recent certificate batches (more relevant than individual certificates)
         $recentBatches = CertificateBatch::latest()->take(5)->get();
@@ -49,6 +59,8 @@ class DashboardController extends Controller
         return view('dashboard', compact(
             'totalCertificates', 
             'totalEvents',
+            'totalProjects',
+            'recentProjects',
             'chartLabels',
             'chartData',
             'certificateBatches'
