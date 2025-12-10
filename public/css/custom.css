@@ -1,0 +1,42 @@
+/* Custom Purple Color for Certificate Projects Widget */
+.bg-purple {
+    background-color: #6f42c1 !important;
+}
+
+.small-box.bg-purple {
+    background-color: #6f42c1;
+}
+
+.small-box.bg-purple .icon {
+    color: rgba(0, 0, 0, 0.15);
+}
+
+.small-box.bg-purple:hover {
+    background-color: #5a32a3;
+}
+
+.small-box.bg-purple .small-box-footer {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+.small-box.bg-purple .small-box-footer:hover {
+    background-color: rgba(0, 0, 0, 0.15);
+}
+
+/* Additional purple variants for consistency */
+.badge-purple {
+    background-color: #6f42c1;
+    color: #fff;
+}
+
+.btn-purple {
+    background-color: #6f42c1;
+    border-color: #6f42c1;
+    color: #fff;
+}
+
+.btn-purple:hover {
+    background-color: #5a32a3;
+    border-color: #5a32a3;
+    color: #fff;
+}

@@ -6,6 +6,7 @@ use App\Http\Controllers\BulkController;
 use App\Http\Controllers\CertificateController;
 use App\Http\Controllers\CertificateTemplateController;
 use App\Http\Controllers\ProgressController;
+use App\Http\Controllers\ProjectController;
 use Spatie\Browsershot\Browsershot;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\View;
@@ -21,6 +22,7 @@ Route::get('/batches', [DashboardController::class, 'batchesList'])->name('batch
 
 // Sertifikat Bulk
 Route::get('/generate-bulk', [BulkController::class, 'index'])->name('certificates.bulk.form');
+Route::post('/generate-bulk', [BulkController::class, 'storeAndDownloadZip'])->name('certificates.bulk.generate');
 Route::post('/generate-bulk/preview', [BulkController::class, 'preview'])->name('certificates.bulk.preview');
 Route::post('/generate-bulk/download', [BulkController::class, 'storeAndDownloadZip'])->name('certificates.bulk.download');
 Route::post('/certificates/render-preview', [BulkController::class, 'renderForPreview'])->name('certificates.render.preview');
@@ -31,6 +33,16 @@ Route::put('/karyawan/{id}', [BulkController::class, 'updateKaryawan'])->name('k
 Route::delete('/karyawan/{id}', [BulkController::class, 'deleteKaryawan'])->name('karyawan.delete');
 Route::get('/karyawan/ajax', [BulkController::class, 'getKaryawanAjax'])->name('karyawan.ajax'); // AJAX endpoint
 Route::get('/karyawan/ajax/all-ids', [BulkController::class, 'getAllKaryawanIds'])->name('karyawan.ajax.all-ids'); // Get all IDs for select all
+
+// Certificate Projects
+Route::get('/projects', [ProjectController::class, 'index'])->name('projects.index');
+Route::get('/projects/{id}/edit', [ProjectController::class, 'edit'])->name('projects.edit');
+Route::post('/projects/certificates/update', [ProjectController::class, 'updateCertificate'])->name('projects.certificates.update');
+Route::post('/projects/bulk-edit', [ProjectController::class, 'bulkEdit'])->name('projects.bulk-edit');
+Route::post('/projects/{id}/finalize', [ProjectController::class, 'finalize'])->name('projects.finalize');
+Route::get('/projects/{id}/progress', [ProjectController::class, 'getProgress'])->name('projects.progress');
+Route::get('/projects/{id}/download', [ProjectController::class, 'download'])->name('projects.download');
+Route::delete('/projects/{id}', [ProjectController::class, 'destroy'])->name('projects.destroy');
 
 // Sertifikat per Individu
 Route::get('/certificate/{certificate}/show', [CertificateController::class, 'show'])->name('certificates.show');

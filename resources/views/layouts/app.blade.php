@@ -15,8 +15,12 @@
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
   <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="{{ asset('css/custom.css') }}">
   @stack('styles')
   @stack('css')
+  <!-- Page-specific head scripts (e.g., Fabric.js) -->
+  @stack('head-scripts')
 </head>
 <body class="hold-transition sidebar-mini layout-fixed sidebar-collapse">
 <div class="wrapper">

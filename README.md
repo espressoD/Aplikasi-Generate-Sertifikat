@@ -15,6 +15,16 @@ Aplikasi web canggih berbasis Laravel 7 untuk membuat sertifikat secara massal d
 - **Placeholder System:** Data dinamis (@{{nama_penerima}}, @{{nomor_sertifikat}}, dll)
 - **Template Management:** Simpan, muat, edit, dan hapus template
 
+### 📐 **Project Editor & Individual Editing**
+- **Project-based Workflow:** Generate certificate projects untuk editing individual
+- **Smart Alignment Guides:** Visual snapping ke tepi, center, dan objek lain (disable dengan Ctrl)
+- **Floating Toolbar:** Format teks dengan toolbar kontekstual yang mengikuti seleksi
+- **Multi-selection Support:** Edit multiple objek sekaligus dengan common property detection
+- **Live Canvas Preview:** Real-time preview setiap perubahan tanpa refresh
+- **Bulk Edit Mode:** Terapkan perubahan ke semua/selected certificates sekaligus
+- **Project Lifecycle:** Draft → Edit individual → Finalize → Download ZIP
+- **Background PDF Generation:** Queue-based dengan progress tracking real-time
+
 ### 📝 **Advanced Certificate Numbering**
 - **Flexible Position:** `{AUTO}` dapat ditempatkan di mana saja
 - **Custom Start Number:** `{AUTO:start_number}` untuk kontrol penuh
@@ -48,10 +58,11 @@ Aplikasi web canggih berbasis Laravel 7 untuk membuat sertifikat secara massal d
 
 - **Backend:** PHP 7.4+, Laravel 7, MySQL
 - **Frontend:** AdminLTE 3, Bootstrap 4, jQuery, Chart.js 3.9.1
-- **Editor:** Fabric.js untuk canvas manipulation
-- **PDF:** Spatie Browsershot (Chrome Headless)
-- **Queue:** Laravel Queue dengan database driver
-- **File Processing:** Maatwebsite Excel
+- **Canvas Editor:** Fabric.js v4.x dengan custom patches dan smart guides
+- **PDF:** Spatie Browsershot (Chrome Headless) dengan canvas-to-PDF pipeline
+- **Queue:** Laravel Queue dengan database driver dan progress tracking
+- **File Processing:** Maatwebsite Excel untuk import Excel/CSV
+- **State Management:** JSON-based canvas state dengan custom serialization
 
 ---
 
@@ -150,12 +161,25 @@ PKL-{AUTO:50}        → PKL-050, PKL-051, PKL-052
 - Bulk select all
 
 #### Generation Process
+
+**Standard Bulk Generation (Direct to PDF):**
 1. Fill event details (nama acara, tanggal, tempat)
 2. Setup certificate numbering with custom start
 3. Upload signatures (up to 3)
 4. Select template
 5. Choose data source
 6. Generate & auto-download ZIP
+
+**Project-based Editing (New!):**
+1. Click "Generate as Project" instead of "Generate"
+2. System creates certificate project with canvas states
+3. Navigate to Project Editor
+4. Edit individual certificates or use bulk edit mode
+5. Use floating toolbar for text formatting (bold, font, size, alignment)
+6. Smart guides auto-snap objects for perfect alignment
+7. Save changes (auto-saved per certificate)
+8. Click "Finalize Project" to generate all PDFs
+9. Download ZIP when ready (progress tracking available)
 
 ### 👥 3. Manage Employees
 
@@ -302,6 +326,50 @@ CERT-2025-001 twice (ERROR)
 // Click each placeholder on canvas to fill data
 ```
 
+#### 9. Project Editor - ZIP File Not Found
+```
+❌ Error: File ZIP tidak ditemukan
+
+✅ Solution: 
+// 1. Ensure queue worker is running
+php artisan queue:work --timeout=300
+
+// 2. Check project status is 'completed'
+// Projects must be finalized before downloading
+
+// 3. Verify zip_path in database (should be relative)
+// Correct: public/certificates/project-1-name.zip
+// Wrong: /full/path/to/storage/app/public/certificates/...
+
+// 4. Check storage/app/public/certificates/ directory
+ls storage/app/public/certificates/
+```
+
+#### 10. Smart Guides Not Showing
+```
+❌ Smart alignment guides not visible
+
+✅ Solution:
+// Guides only show during object movement
+// 1. Click and drag object to activate
+// 2. Check snap tolerance (default: 5px)
+// 3. Press Ctrl to temporarily disable snapping
+// 4. Release Ctrl to re-enable
+```
+
+#### 11. Floating Toolbar Not Updating
+```
+❌ Toolbar shows wrong values after selection change
+
+✅ Solution:
+// 1. Ensure canvas events are firing
+console.log('selection:updated', e.target)
+
+// 2. Check for mixed states (shows "Mixed" for different values)
+// 3. Refresh browser if toolbar stuck
+// 4. Clear browser cache (Ctrl+Shift+Del)
+```
+
 ### 🔍 Debug Commands
 ```bash
 # Check logs
@@ -405,12 +473,14 @@ ALTER TABLE karyawans ADD INDEX idx_nama (nama);
 ```
 storage/app/
 ├── public/
-│   ├── certificates/    # Individual PDFs
+│   ├── certificates/    # Individual PDFs & Project ZIP files
 │   ├── batches/        # Batch ZIP files
 │   ├── templates/      # Saved templates
 │   └── signatures/     # Signature images
 ├── temp/               # Temporary files
-└── uploads/            # Excel/CSV uploads
+├── uploads/            # Excel/CSV uploads
+└── projects/           # Project-specific data
+    └── {project_id}/   # Canvas states & generated PDFs
 ```
 
 #### Backup Strategy
@@ -435,6 +505,15 @@ GET  /batches/list               # Batch management
 POST /certificates/bulk          # Generate certificates
 GET  /certificates/{id}/download # Download individual
 GET  /batches/{id}/download      # Download ZIP
+
+# Project Editor
+GET  /projects                    # List all certificate projects
+GET  /projects/{id}/edit          # Open project editor
+POST /projects/{id}/certificate/{certId} # Update individual certificate
+POST /projects/{id}/finalize      # Generate PDFs for all certificates
+GET  /projects/{id}/download       # Download project ZIP
+GET  /projects/{id}/progress       # Get finalization progress
+DELETE /projects/{id}             # Delete project
 ```
 
 ### Database Models
@@ -443,7 +522,18 @@ GET  /batches/{id}/download      # Download ZIP
 ```php
 // Key fields
 'recipient_name', 'certificate_number', 'event_name',
-'event_date', 'certificate_batch_id', 'pdf_path'
+'event_date', 'certificate_batch_id', 'pdf_path',
+// Project system fields
+'project_id', 'canvas_state', 'is_edited', 'page_order'
+```
+
+#### CertificateProject
+```php
+// Key fields
+'project_name', 'event_name', 'template_id',
+'global_settings', 'status', 'total_certificates',
+'edited_count', 'zip_path', 'finalized_at'
+// Status: draft, finalizing, completed
 ```
 
 #### CertificateBatch  
@@ -463,7 +553,20 @@ GET  /batches/{id}/download      # Download ZIP
 
 ## 📋 Version History
 
-### v3.1.1 - Canvas Export Stability & Validation (Latest)
+### v4.0.0 - Project Editor & Individual Certificate Editing (Latest)
+✅ **Project-based Workflow:** Generate certificate projects untuk editing individual  
+✅ **Smart Alignment Guides:** Visual snapping dengan snap tolerance 5px  
+✅ **Floating Toolbar:** Kontekstual formatting toolbar dengan popover controls  
+✅ **Multi-selection Support:** Edit multiple objek dengan mixed state detection  
+✅ **Canvas State Management:** JSON-based serialization untuk canvas persistence  
+✅ **Background PDF Generation:** Queue jobs dengan progress tracking  
+✅ **Bulk Edit Mode:** Terapkan perubahan ke multiple certificates sekaligus  
+✅ **Project Lifecycle:** Draft → Edit → Finalize → Download ZIP  
+✅ **Live Preview:** Real-time canvas updates tanpa refresh  
+✅ **Keyboard Shortcuts:** Arrow keys untuk nudging, Ctrl untuk disable snapping  
+✅ **ZIP Download Fix:** Relative path storage untuk reliable downloads  
+
+### v3.1.1 - Canvas Export Stability & Validation
 ✅ **Canvas Export Fixes:** 3-tier fallback system untuk export canvas ke PNG  
 ✅ **Fabric.js Patches:** Auto-fix textBaseline dan willReadFrequently warnings  
 ✅ **Frontend Validation:** Validasi field wajib sebelum submit  

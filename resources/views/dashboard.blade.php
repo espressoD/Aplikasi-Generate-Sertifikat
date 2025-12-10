@@ -13,11 +13,11 @@
 
 @section('content')
 <div class="row">
-    <div class="col-lg-4 col-6">
+    <div class="col-lg-3 col-6">
         <div class="small-box bg-info">
             <div class="inner">
                 <h3>{{ $totalCertificates }}</h3>
-                <p>Total Sertifikat Dibuat</p>
+                <p>Total Sertifikat</p>
             </div>
             <div class="icon">
                 <i class="fas fa-file-signature"></i>
@@ -25,11 +25,23 @@
             <a href="{{ route('certificates.list') }}" class="small-box-footer">Info lebih lanjut <i class="fas fa-arrow-circle-right"></i></a>
         </div>
     </div>
-    <div class="col-lg-4 col-6">
+    <div class="col-lg-3 col-6">
+        <div class="small-box bg-purple">
+            <div class="inner">
+                <h3>{{ $totalProjects }}</h3>
+                <p>Certificate Projects</p>
+            </div>
+            <div class="icon">
+                <i class="fas fa-project-diagram"></i>
+            </div>
+            <a href="{{ route('projects.index') }}" class="small-box-footer">Lihat Projects <i class="fas fa-arrow-circle-right"></i></a>
+        </div>
+    </div>
+    <div class="col-lg-3 col-6">
         <div class="small-box bg-success">
             <div class="inner">
                 <h3>{{ $totalEvents }}</h3>
-                <p>Jumlah Acara Berbeda</p>
+                <p>Jumlah Acara</p>
             </div>
             <div class="icon">
                 <i class="fas fa-calendar-check"></i>
@@ -37,11 +49,11 @@
             <a href="{{ route('batches.list') }}" class="small-box-footer">Info lebih lanjut <i class="fas fa-arrow-circle-right"></i></a>
         </div>
     </div>
-    <div class="col-lg-4 col-6">
+    <div class="col-lg-3 col-6">
         <div class="small-box bg-warning">
             <div class="inner">
                 <h3>Akses Cepat</h3>
-                <p>Generate Sertifikat Baru</p>
+                <p>Generate Baru</p>
             </div>
             <div class="icon">
                 <i class="fas fa-plus-circle"></i>
@@ -49,7 +61,95 @@
             <a href="{{ route('certificates.bulk.form') }}" class="small-box-footer">Mulai Generate <i class="fas fa-arrow-circle-right"></i></a>
         </div>
     </div>
+</div>
+
+<!-- Projects Section -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-project-diagram mr-1"></i>
+                    Recent Certificate Projects
+                </h3>
+                <div class="card-tools">
+                    <a href="{{ route('projects.index') }}" class="btn btn-sm btn-primary">
+                        View All Projects
+                    </a>
+                </div>
+            </div>
+            <div class="card-body">
+                @if($recentProjects->count() > 0)
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Project Name</th>
+                                    <th>Event</th>
+                                    <th class="text-center">Certificates</th>
+                                    <th class="text-center">Status</th>
+                                    <th>Created</th>
+                                    <th class="text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($recentProjects as $project)
+                                    <tr>
+                                        <td>
+                                            <strong>{{ Str::limit($project->project_name, 40) }}</strong>
+                                        </td>
+                                        <td>{{ Str::limit($project->event_name, 30) }}</td>
+                                        <td class="text-center">
+                                            <span class="badge badge-info">{{ $project->total_certificates }}</span>
+                                        </td>
+                                        <td class="text-center">
+                                            @if($project->status === 'draft')
+                                                <span class="badge badge-secondary">
+                                                    <i class="fas fa-edit"></i> Draft
+                                                </span>
+                                            @elseif($project->status === 'finalizing')
+                                                <span class="badge badge-warning">
+                                                    <i class="fas fa-spinner"></i> Processing
+                                                </span>
+                                            @else
+                                                <span class="badge badge-success">
+                                                    <i class="fas fa-check"></i> Completed
+                                                </span>
+                                            @endif
+                                        </td>
+                                        <td>
+                                            <small class="text-muted">{{ $project->created_at->diffForHumans() }}</small>
+                                        </td>
+                                        <td class="text-center">
+                                            @if($project->status === 'draft')
+                                                <a href="{{ route('projects.edit', $project->id) }}" class="btn btn-sm btn-primary">
+                                                    <i class="fas fa-edit"></i> Edit
+                                                </a>
+                                            @elseif($project->status === 'completed')
+                                                <a href="{{ route('projects.download', $project->id) }}" class="btn btn-sm btn-success">
+                                                    <i class="fas fa-download"></i> Download
+                                                </a>
+                                            @endif
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @else
+                    <div class="text-center py-4">
+                        <i class="fas fa-project-diagram fa-3x text-muted mb-3"></i>
+                        <p class="text-muted">No projects yet. Start by generating certificates!</p>
+                        <a href="{{ route('certificates.bulk.form') }}" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> Create First Project
+                        </a>
+                    </div>
+                @endif
+            </div>
+        </div>
     </div>
+</div>
+
 <div class="row">
     <section class="col-lg-7 connectedSortable">
         <div class="card">
