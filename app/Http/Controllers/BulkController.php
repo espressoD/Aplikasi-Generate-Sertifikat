@@ -165,7 +165,8 @@ class BulkController extends Controller
     {
         try {
             set_time_limit(0);
-            ini_set('memory_limit', '512M');
+            // 🔧 Increase memory limit for large projects (100+ certificates with images)
+            ini_set('memory_limit', '1024M'); // Increased from 512M to 1GB
             
             // Log incoming request
             Log::info('storeAndDownloadZip called', [
@@ -193,6 +194,20 @@ class BulkController extends Controller
             \DB::reconnect();
 
             $templateJson = json_decode($request->template_json, true);
+            
+            // 🆕 MULTI-PAGE: Load template from database to get canvas_pages if exists
+            $template = CertificateTemplate::find($request->template_id);
+            $templatePages = null;
+            
+            if ($template && $template->template_data) {
+                $fullTemplateData = json_decode($template->template_data, true);
+                
+                // Check if template has multi-page data (version 2 with pages array)
+                if (isset($fullTemplateData['version']) && $fullTemplateData['version'] === 2 && isset($fullTemplateData['pages'])) {
+                    $templatePages = $fullTemplateData['pages'];
+                    Log::info("Template has {$template->total_pages} pages, using multi-page data");
+                }
+            }
             
             // Prepare signature data
             $signatureData = [];
@@ -274,6 +289,16 @@ class BulkController extends Controller
 
             Log::info("Created project #{$project->id} with {$totalParticipants} certificates");
 
+            // Initialize progress tracking in CACHE for real-time updates (session won't work during long requests)
+            $progressKey = "project_{$project->id}_generation_progress";
+            Cache::put($progressKey, [
+                'total' => $totalParticipants,
+                'current' => 0,
+                'status' => 'generating',
+                'currentName' => '',
+                'percentage' => 0,
+            ], now()->addHours(1)); // Expire after 1 hour
+
             // Generate canvas states for each participant
             $counter = 1;
             $createdCount = 0;
@@ -288,6 +313,18 @@ class BulkController extends Controller
 
                 $recipientName = trim($participant[0] ?? '');
                 if (!$recipientName) continue;
+
+                // Update progress in CACHE (real-time, not buffered like session)
+                Cache::put($progressKey, [
+                    'total' => $totalParticipants,
+                    'current' => $counter,
+                    'status' => 'generating',
+                    'currentName' => $recipientName,
+                    'percentage' => round(($counter / $totalParticipants) * 100),
+                ], now()->addHours(1));
+                
+                // Small delay for smooth progress bar updates (optional, remove in production if not needed)
+                // usleep(50000); // 50ms delay - uncomment if you want slower progress for testing
 
                 // Prepare signature data for this participant
                 $participantSignatures = [];
@@ -306,13 +343,104 @@ class BulkController extends Controller
                         }
                     }
                 }
+                
+                // 🐛 DEBUG: Log signature data
+                Log::info("[CERT #{$counter}] Participant signatures prepared", [
+                    'sig_count' => count($participantSignatures),
+                    'sig_keys' => array_keys($participantSignatures),
+                    'has_image' => isset($participantSignatures[0]['image_base64']) ? 'yes' : 'no'
+                ]);
 
                 // Prepare participant data
                 $participantData = $this->prepareParticipantData($request, $participant, $participantSignatures, $counter, $totalParticipants);
                 $participantData['event_name'] = $request->event_name;
                 
-                // Generate canvas state
-                $canvasState = $this->generateCanvasState($request->template_json, $participantData, $participantSignatures);
+                // 🆕 MULTI-PAGE: Generate canvas states for all pages if template has multiple pages
+                $canvasState = null;
+                $canvasPages = null;
+                
+                if ($templatePages && count($templatePages) > 0) {
+                    // Multi-page template: Generate canvas state for each page
+                    $canvasPages = [];
+                    Log::info("Processing multi-page template with " . count($templatePages) . " pages");
+                    Log::info("Participant signatures available: " . count($participantSignatures));
+                    
+                    foreach ($templatePages as $pageIndex => $pageData) {
+                        // pageData['state'] is already an array, need to encode it for generateCanvasState
+                        $pageStateJson = is_array($pageData['state']) ? json_encode($pageData['state']) : $pageData['state'];
+                        
+                        // 🐛 DEBUG: Check template structure
+                        $templateObjects = is_array($pageData['state']) ? $pageData['state'] : json_decode($pageData['state'], true);
+                        $signatureBlocksInTemplate = 0;
+                        if (isset($templateObjects['objects'])) {
+                            foreach ($templateObjects['objects'] as $obj) {
+                                if ($obj['type'] === 'group' && isset($obj['isSignatureBlock']) && $obj['isSignatureBlock']) {
+                                    $signatureBlocksInTemplate++;
+                                }
+                            }
+                        }
+                        Log::info("[TEMPLATE PAGE {$pageIndex}] Signature blocks in template: {$signatureBlocksInTemplate}");
+                        
+                        // 🐛 DEBUG: Log before generateCanvasState
+                        Log::info("[CERT #{$counter} PAGE {$pageIndex}] Calling generateCanvasState", [
+                            'sig_count' => count($participantSignatures),
+                            'participant_name' => $participantData['recipientName'] ?? 'N/A'
+                        ]);
+                        
+                        $generatedState = $this->generateCanvasState($pageStateJson, $participantData, $participantSignatures);
+                        
+                        // 🐛 DEBUG: Check generated state for signature data
+                        if ($generatedState && isset($generatedState['objects'])) {
+                            $signatureBlocksAfter = 0;
+                            foreach ($generatedState['objects'] as $obj) {
+                                if ($obj['type'] === 'group' && isset($obj['isSignatureBlock']) && $obj['isSignatureBlock']) {
+                                    $signatureBlocksAfter++;
+                                    // Check if signature was actually filled
+                                    if (isset($obj['objects'])) {
+                                        foreach ($obj['objects'] as $child) {
+                                            if ($child['type'] === 'textbox' && isset($child['signatureField'])) {
+                                                Log::info("[AFTER GENERATE] Signature text field", [
+                                                    'field' => $child['signatureField'],
+                                                    'text' => $child['text'] ?? 'EMPTY',
+                                                    'is_placeholder' => ($child['text'] ?? '') === '' || strpos($child['text'] ?? '', '{{') !== false
+                                                ]);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Log::info("[AFTER GENERATE PAGE {$pageIndex}] Signature blocks: {$signatureBlocksAfter}");
+                        }
+                        
+                        if ($generatedState) {
+                            // generateCanvasState returns array, not JSON string
+                            $canvasPages[] = [
+                                'id' => $pageData['id'],
+                                'state' => is_array($generatedState) ? $generatedState : json_decode($generatedState, true),
+                                'bgImage' => $pageData['bgImage'] ?? null,
+                                'bgColor' => $pageData['bgColor'] ?? '#ffffff',
+                                // 🔧 ADD: Store participant metadata for verification
+                                'participantName' => $participantData['recipientName'] ?? '',
+                                'certificateNumber' => $participantData['certificateNumber'] ?? '',
+                            ];
+                            
+                            // Log object count for debugging
+                            $objectCount = count($generatedState['objects'] ?? []);
+                            Log::info("Page " . ($pageIndex + 1) . " generated with {$objectCount} objects for {$participantData['recipientName']}");
+                        } else {
+                            Log::warning("Failed to generate state for page " . ($pageIndex + 1));
+                        }
+                    }
+                    // First page becomes the canvas_state for backward compatibility
+                    $canvasState = isset($canvasPages[0]) ? json_encode($canvasPages[0]['state']) : null;
+                    Log::info("Generated " . count($canvasPages) . " pages for certificate");
+                } else {
+                    // Single-page template: Use legacy flow
+                    Log::info("Processing single-page template (legacy flow)");
+                    // generateCanvasState returns array, need to encode
+                    $generatedState = $this->generateCanvasState($request->template_json, $participantData, $participantSignatures);
+                    $canvasState = $generatedState ? json_encode($generatedState) : null;
+                }
                 
                 if ($canvasState) {
                     // Retry mechanism for MySQL connection issues
@@ -328,8 +456,8 @@ class BulkController extends Controller
                                 sleep(1); // Wait 1 second before retry
                             }
                             
-                            // Create certificate with canvas state (NOT PDF)
-                            Certificate::create([
+                            // 🆕 MULTI-PAGE: Create certificate with canvas state and canvas_pages
+                            $certificateData = [
                                 'project_id' => $project->id,
                                 'recipient_name' => $recipientName,
                                 'event_name' => $request->event_name,
@@ -340,10 +468,34 @@ class BulkController extends Controller
                                 'template_data' => $request->template_json,
                                 'page_order' => $counter,
                                 'is_edited' => false,
-                            ]);
+                            ];
+                            
+                            // Add canvas_pages if multi-page template (Laravel will auto-encode via $casts)
+                            if ($canvasPages) {
+                                $certificateData['canvas_pages'] = $canvasPages;
+                            }
+                            
+                            $certificate = Certificate::create($certificateData);
+                            
+                            // 🔧 VERIFY: Check canvas_pages saved correctly
+                            if ($canvasPages && $certificate->canvas_pages) {
+                                $savedPages = is_array($certificate->canvas_pages) ? $certificate->canvas_pages : json_decode($certificate->canvas_pages, true);
+                                Log::info("Certificate #{$counter} ({$recipientName}) created with " . count($savedPages) . " pages", [
+                                    'page1_participant' => $savedPages[0]['participantName'] ?? 'N/A',
+                                    'page2_participant' => isset($savedPages[1]) ? ($savedPages[1]['participantName'] ?? 'N/A') : 'No Page 2',
+                                    'page1_cert_number' => $savedPages[0]['certificateNumber'] ?? 'N/A',
+                                    'page2_cert_number' => isset($savedPages[1]) ? ($savedPages[1]['certificateNumber'] ?? 'N/A') : 'N/A',
+                                ]);
+                            }
                             
                             $created = true;
                             $createdCount++;
+                            
+                            // 🔧 Memory management: Clear memory every 50 certificates
+                            if ($counter % 50 === 0) {
+                                gc_collect_cycles(); // Force garbage collection
+                                Log::info("Memory cleanup at certificate {$counter}, current usage: " . memory_get_usage(true) / 1024 / 1024 . " MB");
+                            }
                             
                         } catch (\Illuminate\Database\QueryException $e) {
                             $retryCount++;
@@ -372,6 +524,15 @@ class BulkController extends Controller
             }
             
             Log::info("Created {$createdCount} certificates for project #{$project->id}");
+
+            // Mark generation as complete in CACHE
+            Cache::put($progressKey, [
+                'total' => $totalParticipants,
+                'current' => $totalParticipants,
+                'status' => 'completed',
+                'currentName' => '',
+                'percentage' => 100,
+            ], now()->addHours(1));
 
             // Redirect to project editor instead of starting PDF generation
             return response()->json([
@@ -403,6 +564,26 @@ class BulkController extends Controller
     }
 
 
+
+    /**
+     * Get project generation progress (real-time via Cache)
+     */
+    public function getGenerationProgress($projectId)
+    {
+        $progressKey = "project_{$projectId}_generation_progress";
+        $progress = Cache::get($progressKey, [
+            'total' => 0,
+            'current' => 0,
+            'status' => 'unknown',
+            'currentName' => '',
+            'percentage' => 0,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'progress' => $progress,
+        ]);
+    }
 
     /**
      * Helper function BARU untuk memproses data tanda tangan dari form.
@@ -554,12 +735,24 @@ class BulkController extends Controller
      */
     private function generateCanvasState($templateJson, $participantData, $signatureData = [])
     {
+        // 🐛 DEBUG: Log signature data received
+        Log::info("[generateCanvasState] Called", [
+            'sig_data_count' => count($signatureData),
+            'sig_data_keys' => array_keys($signatureData),
+            'participant' => $participantData['recipientName'] ?? 'N/A'
+        ]);
+        
         $canvasData = json_decode($templateJson, true);
         
         if (!isset($canvasData['objects'])) {
+            Log::warning("[generateCanvasState] No objects in canvas data");
             return null;
         }
 
+        // 🔧 Preserve backgroundImage from template
+        // This ensures the background displays correctly in the editor
+        // No modification needed - just pass through the original backgroundImage object
+        
         // Process each object in the template
         foreach ($canvasData['objects'] as &$object) {
             // Handle text placeholders (both textbox and i-text types)
@@ -628,6 +821,27 @@ class BulkController extends Controller
                     case '{{nilai_4}}':
                         $object['text'] = $participantData['nilai4'] ?? '-';
                         break;
+                    // 🆕 SIGNATURE PLACEHOLDERS: Handle signature text placeholders (not in blocks)
+                    // Format: {{nama_penandatangan_1}}, {{jabatan_penandatangan_1}}, {{nama_penandatangan_2}}, etc.
+                    default:
+                        if (preg_match('/^@?\{\{nama_penandatangan_(\d+)\}\}$/', $placeholderType, $matches)) {
+                            $sigIndex = intval($matches[1]) - 1; // Convert 1-based to 0-based index
+                            $object['text'] = $signatureData[$sigIndex]['name'] ?? '';
+                            Log::info("[generateCanvasState] Replaced signature NAME placeholder", [
+                                'placeholder' => $placeholderType,
+                                'sig_index' => $sigIndex,
+                                'value' => $object['text']
+                            ]);
+                        } elseif (preg_match('/^@?\{\{jabatan_penandatangan_(\d+)\}\}$/', $placeholderType, $matches)) {
+                            $sigIndex = intval($matches[1]) - 1;
+                            $object['text'] = $signatureData[$sigIndex]['title'] ?? '';
+                            Log::info("[generateCanvasState] Replaced signature TITLE placeholder", [
+                                'placeholder' => $placeholderType,
+                                'sig_index' => $sigIndex,
+                                'value' => $object['text']
+                            ]);
+                        }
+                        break;
                 }
             }
             
@@ -635,24 +849,109 @@ class BulkController extends Controller
             if (isset($object['type']) && $object['type'] === 'group' && isset($object['isSignatureBlock']) && $object['isSignatureBlock']) {
                 $sigIndex = $object['signatureIndex'] ?? 0;
                 
+                // 🐛 DEBUG: Log signature block processing
+                Log::info("[generateCanvasState] Found signature block", [
+                    'sig_index' => $sigIndex,
+                    'has_sig_data' => isset($signatureData[$sigIndex]),
+                    'sig_name' => $signatureData[$sigIndex]['name'] ?? 'N/A',
+                    'has_objects' => isset($object['objects'])
+                ]);
+                
                 if (isset($signatureData[$sigIndex]) && isset($object['objects'])) {
-                    foreach ($object['objects'] as &$childObj) {
-                        if ($childObj['type'] === 'textbox') {
-                            // Update signature name
+                    Log::info("[generateCanvasState] Processing signature block children", [
+                        'sig_index' => $sigIndex,
+                        'child_count' => count($object['objects']),
+                        'signature_data' => [
+                            'name' => $signatureData[$sigIndex]['name'] ?? 'NOT SET',
+                            'title' => $signatureData[$sigIndex]['title'] ?? 'NOT SET',
+                            'has_image' => isset($signatureData[$sigIndex]['image_base64'])
+                        ]
+                    ]);
+                    
+                    foreach ($object['objects'] as $childIndex => &$childObj) {
+                        // Log BEFORE processing
+                        Log::info("[generateCanvasState] Child[{$childIndex}] BEFORE", [
+                            'type' => $childObj['type'],
+                            'signatureField' => $childObj['signatureField'] ?? 'NOT SET',
+                            'text' => isset($childObj['text']) ? $childObj['text'] : 'N/A',
+                            'has_src' => isset($childObj['src']) && !empty($childObj['src'])
+                        ]);
+                        
+                        if ($childObj['type'] === 'textbox' || $childObj['type'] === 'i-text' || $childObj['type'] === 'text') {
+                            $wasUpdated = false;
+                            
+                            // METHOD 1: Update by signatureField property (preferred)
                             if (isset($childObj['signatureField']) && $childObj['signatureField'] === 'name') {
+                                $oldText = $childObj['text'] ?? 'EMPTY';
                                 $childObj['text'] = $signatureData[$sigIndex]['name'] ?? '';
+                                $wasUpdated = true;
+                                Log::info("[generateCanvasState] ✅ Updated signature NAME (via signatureField)", [
+                                    'old' => $oldText,
+                                    'new' => $childObj['text']
+                                ]);
                             }
-                            // Update signature title
-                            if (isset($childObj['signatureField']) && $childObj['signatureField'] === 'title') {
+                            elseif (isset($childObj['signatureField']) && $childObj['signatureField'] === 'title') {
+                                $oldText = $childObj['text'] ?? 'EMPTY';
                                 $childObj['text'] = $signatureData[$sigIndex]['title'] ?? '';
+                                $wasUpdated = true;
+                                Log::info("[generateCanvasState] ✅ Updated signature TITLE (via signatureField)", [
+                                    'old' => $oldText,
+                                    'new' => $childObj['text']
+                                ]);
+                            }
+                            
+                            // METHOD 2: Fallback - Update by text pattern matching (for templates without signatureField)
+                            if (!$wasUpdated && isset($childObj['text'])) {
+                                $text = $childObj['text'];
+                                
+                                // Match {{nama_penandatangan_X}} pattern
+                                if (preg_match('/^\{\{nama_penandatangan_(\d+)\}\}$/', $text, $matches)) {
+                                    $placeholderIndex = intval($matches[1]) - 1; // Convert to 0-based
+                                    if ($placeholderIndex === $sigIndex) {
+                                        $oldText = $childObj['text'];
+                                        $childObj['text'] = $signatureData[$sigIndex]['name'] ?? '';
+                                        Log::info("[generateCanvasState] ✅ Updated signature NAME (via pattern)", [
+                                            'pattern' => $text,
+                                            'old' => $oldText,
+                                            'new' => $childObj['text']
+                                        ]);
+                                    }
+                                }
+                                // Match {{jabatan_penandatangan_X}} pattern
+                                elseif (preg_match('/^\{\{jabatan_penandatangan_(\d+)\}\}$/', $text, $matches)) {
+                                    $placeholderIndex = intval($matches[1]) - 1;
+                                    if ($placeholderIndex === $sigIndex) {
+                                        $oldText = $childObj['text'];
+                                        $childObj['text'] = $signatureData[$sigIndex]['title'] ?? '';
+                                        Log::info("[generateCanvasState] ✅ Updated signature TITLE (via pattern)", [
+                                            'pattern' => $text,
+                                            'old' => $oldText,
+                                            'new' => $childObj['text']
+                                        ]);
+                                    }
+                                }
                             }
                         }
                         // Update signature image
                         if ($childObj['type'] === 'image' && isset($childObj['signatureField']) && $childObj['signatureField'] === 'image') {
                             if (isset($signatureData[$sigIndex]['image_base64'])) {
+                                $hasSrcBefore = isset($childObj['src']) && !empty($childObj['src']);
                                 $childObj['src'] = $signatureData[$sigIndex]['image_base64'];
+                                Log::info("[generateCanvasState] ✅ Updated signature IMAGE", [
+                                    'had_src_before' => $hasSrcBefore,
+                                    'has_src_after' => true,
+                                    'src_length' => strlen($childObj['src'])
+                                ]);
                             }
                         }
+                        
+                        // Log AFTER processing
+                        Log::info("[generateCanvasState] Child[{$childIndex}] AFTER", [
+                            'type' => $childObj['type'],
+                            'signatureField' => $childObj['signatureField'] ?? 'NOT SET',
+                            'text' => isset($childObj['text']) ? $childObj['text'] : 'N/A',
+                            'has_src' => isset($childObj['src']) && !empty($childObj['src'])
+                        ]);
                     }
                 }
             }

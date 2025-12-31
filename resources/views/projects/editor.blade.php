@@ -98,6 +98,54 @@
     
     .thumbnail-item:hover {
         border-color: #007bff;
+    }
+    
+    /* 🆕 MULTI-PAGE: Page navigation styles */
+    .page-navigation {
+        background: #f8f9fa;
+        padding: 10px 15px;
+        border-radius: 5px;
+        margin-bottom: 15px;
+        border: 1px solid #dee2e6;
+        display: none; /* Hidden by default, shown only for multi-page */
+    }
+    
+    .page-navigation.active {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    
+    .page-tabs {
+        display: flex;
+        gap: 5px;
+        flex: 1;
+    }
+    
+    .page-tab {
+        padding: 8px 16px;
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 0.9rem;
+    }
+    
+    .page-tab:hover {
+        background: #e9ecef;
+    }
+    
+    .page-tab.active {
+        background: #007bff;
+        color: white;
+        border-color: #007bff;
+    }
+    
+    .page-info {
+        color: #6c757d;
+        font-size: 0.9rem;
+        margin-left: 15px;
         background: #f8f9fa;
     }
     
@@ -210,6 +258,16 @@
                 </div>
             </div>
             
+            <!-- 🆕 MULTI-PAGE: Page Navigation (hidden for single-page) -->
+            <div class="page-navigation" id="page-navigation">
+                <div class="page-tabs" id="page-tabs">
+                    <!-- Page tabs will be generated dynamically -->
+                </div>
+                <div class="page-info">
+                    <i class="fas fa-file-alt"></i> <span id="current-page-info">Page 1 of 1</span>
+                </div>
+            </div>
+            
             <!-- Canvas Control Buttons -->
             <div class="canvas-controls mb-3">
                 <button id="add-text-btn" class="btn btn-default btn-sm">
@@ -316,6 +374,7 @@ const PROJECT_DATA = {
             'recipient_name' => $cert->recipient_name,
             'certificate_number' => $cert->certificate_number,
             'canvas_state' => $cert->canvas_state,
+            'canvas_pages' => $cert->canvas_pages, // 🔧 MULTI-PAGE: Pass canvas_pages
             'is_edited' => $cert->is_edited,
             'page_order' => $cert->page_order,
         ];
@@ -328,6 +387,10 @@ let hasUnsavedChanges = false;
 let autoSaveTimeout;
 let undoRedoManager; // Undo/Redo functionality
 window.alignWithinGroupMode = false; // Align within group mode
+let currentPageIndex = 0; // 🆕 MULTI-PAGE: Track current page
+let totalPages = 1; // 🆕 MULTI-PAGE: Track total pages
+let isSaving = false; // 🔧 BUG FIX: Track save state to prevent race condition
+let saveQueue = []; // 🔧 BUG FIX: Queue for pending save operations
 window.lastNormalAlign = 'left'; // Last alignment for normal mode
 window.lastGroupAlign = 'left'; // Last alignment for group mode
 window.isCtrlPressed = false; // Track Ctrl key for temporary snap disable
@@ -1588,59 +1651,167 @@ function initCanvas() {
     });
 }
 
+// 🆕 MULTI-PAGE: Helper functions for converting canvas properties
+function convertToNumber(val) {
+    if (val === null || val === undefined || val === '') return null;
+    const num = parseFloat(val);
+    return isNaN(num) ? val : num;
+}
+
+function convertToBoolean(val) {
+    if (val === null || val === undefined || val === '') return false;
+    if (typeof val === 'boolean') return val;
+    return val === 'true' || val === true || val === 1 || val === '1';
+}
+
+function fixObjectProperties(obj) {
+    // Convert numeric properties
+    const numericProps = ['left', 'top', 'width', 'height', 'scaleX', 'scaleY', 'angle', 
+                         'fontSize', 'strokeWidth', 'opacity', 'skewX', 'skewY',
+                         'x1', 'y1', 'x2', 'y2', 'rx', 'ry', 'radius'];
+    numericProps.forEach(prop => {
+        if (obj[prop] !== undefined) {
+            obj[prop] = convertToNumber(obj[prop]);
+        }
+    });
+    
+    // Convert boolean properties
+    const boolProps = ['flipX', 'flipY', 'visible', 'isPlaceholder', 'hasControls', 
+                      'hasBorders', 'selectable', 'evented', 'underline', 'linethrough', 'overline'];
+    boolProps.forEach(prop => {
+        if (obj[prop] !== undefined) {
+            obj[prop] = convertToBoolean(obj[prop]);
+        }
+    });
+}
+
 function loadCertificate(index) {
     if (index < 0 || index >= PROJECT_DATA.certificates.length) {
         return;
     }
     
+    // 🔧 BUG FIX: Block navigation if save is in progress
+    if (isSaving) {
+        console.warn('Save in progress, navigation blocked. Queuing navigation request...');
+        // Queue the navigation request to execute after save completes
+        saveQueue.push(() => loadCertificate(index));
+        return;
+    }
+    
     currentCertificateIndex = index;
     const cert = PROJECT_DATA.certificates[index];
+    currentPageIndex = 0; // 🔧 MULTI-PAGE: Reset to first page when loading certificate
     
     console.log('Loading certificate:', cert.id, cert.recipient_name);
+    console.log('Certificate data:', {
+        has_canvas_pages: !!cert.canvas_pages,
+        canvas_pages_type: typeof cert.canvas_pages,
+        canvas_pages_isArray: Array.isArray(cert.canvas_pages),
+        canvas_pages_length: cert.canvas_pages ? cert.canvas_pages.length : 0,
+        has_canvas_state: !!cert.canvas_state,
+        canvas_state_type: typeof cert.canvas_state
+    });
     
     // Clear canvas
     canvas.clear();
     canvas.backgroundColor = '#ffffff';
     
+    // 🆕 MULTI-PAGE: Detect format and load appropriate data
+    let canvasStateToLoad = null;
+    let pageBackgroundImage = null;
+    let pageBackgroundColor = null;
+    
+    if (cert.canvas_pages && Array.isArray(cert.canvas_pages) && cert.canvas_pages.length > 0) {
+        // Multi-page certificate - load first page
+        console.log('Loading multi-page certificate, total pages:', cert.canvas_pages.length);
+        
+        // 🔧 VERIFY: Check participant data in each page
+        cert.canvas_pages.forEach((page, idx) => {
+            console.log(`Page ${idx + 1} metadata:`, {
+                participantName: page.participantName || 'NOT SET',
+                certificateNumber: page.certificateNumber || 'NOT SET',
+                hasState: !!page.state,
+                objectCount: page.state?.objects?.length || 0
+            });
+        });
+        
+        const firstPage = cert.canvas_pages[0];
+        canvasStateToLoad = firstPage.state;
+        pageBackgroundImage = firstPage.bgImage;
+        pageBackgroundColor = firstPage.bgColor;
+    } else if (cert.canvas_state) {
+        // Legacy single-page certificate
+        console.log('Loading single-page certificate (legacy format)');
+        // Parse if string, otherwise use as-is
+        if (typeof cert.canvas_state === 'string') {
+            try {
+                canvasStateToLoad = JSON.parse(cert.canvas_state);
+            } catch (e) {
+                console.error('Failed to parse canvas_state:', e);
+                canvasStateToLoad = null;
+            }
+        } else {
+            canvasStateToLoad = cert.canvas_state;
+        }
+    }
+    
+    // 🔧 Load page background first (for multi-page)
+    if (pageBackgroundImage) {
+        fabric.Image.fromURL(pageBackgroundImage, function(img) {
+            canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), {
+                scaleX: canvas.width / img.width,
+                scaleY: canvas.height / img.height
+            });
+        });
+    } else if (pageBackgroundColor) {
+        canvas.backgroundColor = pageBackgroundColor;
+    }
+    
     // Load canvas state
-    if (cert.canvas_state && cert.canvas_state.objects) {
-        console.log('Canvas state objects count:', cert.canvas_state.objects.length);
+    if (canvasStateToLoad && canvasStateToLoad.objects) {
+        console.log('Canvas state objects count:', canvasStateToLoad.objects.length);
+        
+        // � DEBUG: Check for signature blocks in canvas objects
+        let signatureBlockCount = 0;
+        canvasStateToLoad.objects.forEach((obj, idx) => {
+            if (obj.type === 'group' && obj.isSignatureBlock) {
+                signatureBlockCount++;
+                console.log(`🖊️ Signature Block #${obj.signatureIndex || 0} found at object[${idx}]:`, {
+                    hasObjects: !!obj.objects,
+                    objectsCount: obj.objects?.length || 0,
+                    signatureIndex: obj.signatureIndex
+                });
+                
+                // Check child objects for signature fields
+                if (obj.objects) {
+                    obj.objects.forEach((child, childIdx) => {
+                        // Log ALL child objects, not just those with signatureField
+                        console.log(`  └─ Child[${childIdx}] (${child.type}):`, {
+                            signatureField: child.signatureField || 'NOT SET',
+                            text: (child.type === 'textbox' || child.type === 'i-text' || child.type === 'text') ? (child.text || 'EMPTY') : 'N/A',
+                            src: child.type === 'image' ? (child.src ? `${child.src.substring(0, 50)}...` : 'NO_SRC') : 'N/A',
+                            isPlaceholder: child.isPlaceholder || false,
+                            placeholderType: child.placeholderType || 'N/A'
+                        });
+                    });
+                }
+            }
+        });
+        console.log(`Total signature blocks found: ${signatureBlockCount}`);
+        
+        // �🔧 DEBUG: Check for backgroundImage
+        console.log('Has backgroundImage:', !!canvasStateToLoad.backgroundImage);
+        if (canvasStateToLoad.backgroundImage) {
+            console.log('Background type:', typeof canvasStateToLoad.backgroundImage);
+            if (typeof canvasStateToLoad.backgroundImage === 'object') {
+                console.log('Background src:', canvasStateToLoad.backgroundImage.src || 'NO SRC');
+            } else {
+                console.log('Background value:', canvasStateToLoad.backgroundImage);
+            }
+        }
         
         // Fix: Convert string properties to numbers (Fabric.js requirement)
-        const fixedCanvasState = JSON.parse(JSON.stringify(cert.canvas_state));
-        
-        function convertToNumber(val) {
-            if (val === null || val === undefined || val === '') return null;
-            const num = parseFloat(val);
-            return isNaN(num) ? val : num;
-        }
-        
-        function convertToBoolean(val) {
-            if (val === null || val === undefined || val === '') return false;
-            if (typeof val === 'boolean') return val;
-            return val === 'true' || val === true || val === 1 || val === '1';
-        }
-        
-        function fixObjectProperties(obj) {
-            // Convert numeric properties
-            const numericProps = ['left', 'top', 'width', 'height', 'scaleX', 'scaleY', 'angle', 
-                                 'fontSize', 'strokeWidth', 'opacity', 'skewX', 'skewY',
-                                 'x1', 'y1', 'x2', 'y2', 'rx', 'ry', 'radius'];
-            numericProps.forEach(prop => {
-                if (obj[prop] !== undefined) {
-                    obj[prop] = convertToNumber(obj[prop]);
-                }
-            });
-            
-            // Convert boolean properties
-            const boolProps = ['flipX', 'flipY', 'visible', 'isPlaceholder', 'hasControls', 
-                              'hasBorders', 'selectable', 'evented', 'underline', 'linethrough', 'overline'];
-            boolProps.forEach(prop => {
-                if (obj[prop] !== undefined) {
-                    obj[prop] = convertToBoolean(obj[prop]);
-                }
-            });
-        }
+        const fixedCanvasState = JSON.parse(JSON.stringify(canvasStateToLoad));
         
         // Fix background image if exists
         if (fixedCanvasState.backgroundImage) {
@@ -1689,6 +1860,9 @@ function loadCertificate(index) {
         .addClass(cert.is_edited ? 'badge-warning' : 'badge-info')
         .html(cert.is_edited ? '<i class="fas fa-edit"></i> Edited' : 'Not Edited');
     
+    // 🆕 MULTI-PAGE: Initialize page navigation
+    initializePageNavigation(cert);
+    
     // Update thumbnails
     $('.thumbnail-item').removeClass('active');
     $(`.thumbnail-item[data-page-number="${index + 1}"]`).addClass('active');
@@ -1702,6 +1876,14 @@ function loadCertificate(index) {
 }
 
 function saveCertificate() {
+    // 🔧 BUG FIX: Prevent concurrent saves causing data corruption
+    if (isSaving) {
+        console.warn('Save already in progress, skipping duplicate request');
+        return;
+    }
+    
+    isSaving = true; // Lock save operation
+    
     const cert = PROJECT_DATA.certificates[currentCertificateIndex];
     const canvasState = canvas.toJSON(['isPlaceholder', 'placeholderType', 'isSignatureBlock', 'signatureIndex', 'signatureField', 'isCustomGroup']);
     
@@ -1713,10 +1895,23 @@ function saveCertificate() {
         canvasState.backgroundColor = canvas.backgroundColor;
     }
     
+    console.log('Saving certificate #' + cert.id + ' (' + cert.recipient_name + ')'); // 🔧 Added participant name for debugging
     console.log('Saving canvas state with background:', canvasState.backgroundImage ? 'Yes' : 'No');
     console.log('Canvas state objects:', canvasState.objects?.length || 0);
     
     showSaveIndicator('saving');
+    
+    // 🆕 MULTI-PAGE: Check if certificate has multi-page data (from template)
+    let canvasPages = null;
+    if (cert.canvas_pages && Array.isArray(cert.canvas_pages)) {
+        // Update current page with current canvas state before saving
+        canvasPages = [...cert.canvas_pages];
+        canvasPages[currentPageIndex] = {
+            ...canvasPages[currentPageIndex],
+            state: canvasState
+        };
+        console.log(`Updating multi-page certificate, saving page ${currentPageIndex + 1}/${canvasPages.length}`);
+    }
     
     $.ajax({
         url: '{{ route("projects.certificates.update") }}',
@@ -1727,7 +1922,8 @@ function saveCertificate() {
         contentType: 'application/json',
         data: JSON.stringify({
             certificate_id: cert.id,
-            canvas_state: canvasState
+            canvas_state: canvasState, // Backward compatibility
+            canvas_pages: canvasPages // 🆕 MULTI-PAGE: Send pages if exists
         }),
         success: function(response) {
             if (response.success) {
@@ -1736,12 +1932,18 @@ function saveCertificate() {
                 
                 console.log('Certificate saved successfully:', {
                     id: cert.id,
+                    recipient: cert.recipient_name, // 🔧 Added participant verification
                     is_edited: response.is_edited
                 });
                 
                 // Update local data
                 PROJECT_DATA.certificates[currentCertificateIndex].is_edited = response.is_edited;
                 PROJECT_DATA.certificates[currentCertificateIndex].canvas_state = canvasState;
+                
+                // 🔧 MULTI-PAGE: Update canvas_pages in PROJECT_DATA
+                if (canvasPages) {
+                    PROJECT_DATA.certificates[currentCertificateIndex].canvas_pages = canvasPages;
+                }
                 
                 // Update edit status badge
                 $('#edit-status').removeClass('badge-info').addClass('badge-warning')
@@ -1753,15 +1955,28 @@ function saveCertificate() {
                 
                 // Update edited count
                 updateEditedCount();
+                
+                // 🔧 BUG FIX: Release save lock and process queue
+                isSaving = false;
+                processQueuedActions();
+                
             } else {
                 showSaveIndicator('error');
                 toastr.error(response.message || 'Failed to save');
+                
+                // 🔧 BUG FIX: Release save lock on error
+                isSaving = false;
+                processQueuedActions();
             }
         },
         error: function(xhr) {
             showSaveIndicator('error');
             toastr.error('Error saving certificate');
             console.error(xhr);
+            
+            // 🔧 BUG FIX: Release save lock on error
+            isSaving = false;
+            processQueuedActions();
         }
     });
 }
@@ -1779,6 +1994,219 @@ function triggerAutoSave() {
             saveCertificate();
         }
     }, 2000); // Auto-save after 2 seconds of inactivity
+}
+
+// 🔧 BUG FIX: Process queued actions after save completes
+function processQueuedActions() {
+    console.log('Processing queued actions, queue length:', saveQueue.length);
+    
+    if (saveQueue.length > 0) {
+        // Execute the first queued action
+        const nextAction = saveQueue.shift();
+        console.log('Executing queued action:', nextAction.name);
+        nextAction();
+    }
+}
+
+// 🆕 MULTI-PAGE: Initialize page navigation UI
+function initializePageNavigation(cert) {
+    // Check if certificate has multiple pages
+    if (cert.canvas_pages && Array.isArray(cert.canvas_pages) && cert.canvas_pages.length > 1) {
+        totalPages = cert.canvas_pages.length;
+        
+        // Show page navigation
+        $('#page-navigation').addClass('active');
+        
+        // Generate page tabs
+        const $pageTabs = $('#page-tabs');
+        $pageTabs.empty();
+        
+        for (let i = 0; i < totalPages; i++) {
+            const $tab = $(`<div class="page-tab ${i === currentPageIndex ? 'active' : ''}" data-page-index="${i}">
+                <i class="fas fa-file-alt"></i> Page ${i + 1}
+            </div>`);
+            
+            $tab.on('click', function() {
+                switchToPage($(this).data('page-index'));
+            });
+            
+            $pageTabs.append($tab);
+        }
+        
+        // Update page info
+        $('#current-page-info').text(`Page ${currentPageIndex + 1} of ${totalPages}`);
+    } else {
+        // Hide page navigation for single-page certificates
+        $('#page-navigation').removeClass('active');
+        currentPageIndex = 0;
+        totalPages = 1;
+    }
+}
+
+// 🆕 MULTI-PAGE: Switch to specific page
+function switchToPage(pageIndex) {
+    if (pageIndex === currentPageIndex) return;
+    
+    // 🔧 BUG FIX: Block page switching if save is in progress
+    if (isSaving) {
+        console.warn('Save in progress, page switch blocked. Queuing switch request...');
+        saveQueue.push(() => switchToPage(pageIndex));
+        return;
+    }
+    
+    const cert = PROJECT_DATA.certificates[currentCertificateIndex];
+    
+    // Validate page index
+    if (!cert.canvas_pages || pageIndex < 0 || pageIndex >= cert.canvas_pages.length) {
+        console.error('Invalid page index:', pageIndex);
+        return;
+    }
+    
+    // 🔧 BUG FIX: Wait for save to complete before switching
+    if (hasUnsavedChanges) {
+        console.log(`Saving page ${currentPageIndex + 1} before switching to page ${pageIndex + 1}...`);
+        
+        saveCurrentPageState().then(() => {
+            hasUnsavedChanges = false;
+            performPageSwitch(pageIndex, cert);
+        }).catch(error => {
+            console.error('Error saving page state:', error);
+            toastr.error('Failed to save current page');
+        });
+    } else {
+        performPageSwitch(pageIndex, cert);
+    }
+}
+
+// 🔧 BUG FIX: Separate page switch logic to avoid code duplication
+function performPageSwitch(pageIndex, cert) {
+    currentPageIndex = pageIndex;
+    const pageData = cert.canvas_pages[pageIndex];
+    
+    console.log(`Switching to page ${pageIndex + 1}/${cert.canvas_pages.length} for cert #${cert.id} (${cert.recipient_name})`);
+    
+    // Clear canvas
+    canvas.clear();
+    
+    // Load page background
+    if (pageData.bgImage) {
+        fabric.Image.fromURL(pageData.bgImage, function(img) {
+            canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), {
+                scaleX: canvas.width / img.width,
+                scaleY: canvas.height / img.height
+            });
+        });
+    } else if (pageData.bgColor) {
+        canvas.backgroundColor = pageData.bgColor;
+    } else {
+        canvas.backgroundColor = '#ffffff';
+    }
+    
+    // Load page canvas state
+    if (pageData.state && pageData.state.objects) {
+        const fixedState = JSON.parse(JSON.stringify(pageData.state));
+        
+        // Apply same property conversions as loadCertificate
+        fixedState.objects.forEach(obj => fixObjectProperties(obj));
+        
+        canvas.loadFromJSON(fixedState, function() {
+            canvas.renderAll();
+            console.log(`Page ${pageIndex + 1} loaded, objects:`, canvas.getObjects().length);
+        });
+    }
+    
+    // Update UI
+    $('.page-tab').removeClass('active');
+    $(`.page-tab[data-page-index="${pageIndex}"]`).addClass('active');
+    $('#current-page-info').text(`Page ${pageIndex + 1} of ${totalPages}`);
+    
+    // Reset undo/redo for new page
+    if (undoRedoManager) {
+        undoRedoManager.reset();
+        undoRedoManager.saveState();
+    }
+    
+    hasUnsavedChanges = false;
+}
+
+// 🆕 MULTI-PAGE: Save current page state (used before switching pages)
+function saveCurrentPageState() {
+    // 🔧 BUG FIX: Prevent concurrent saves
+    if (isSaving) {
+        console.warn('Save already in progress, skipping page state save');
+        return Promise.resolve(); // Return resolved promise for chaining
+    }
+    
+    isSaving = true; // Lock save operation
+    
+    const cert = PROJECT_DATA.certificates[currentCertificateIndex];
+    
+    if (!cert.canvas_pages || !Array.isArray(cert.canvas_pages)) {
+        isSaving = false;
+        return Promise.resolve();
+    }
+    
+    const canvasState = canvas.toJSON(['isPlaceholder', 'placeholderType', 'isSignatureBlock', 
+                                       'signatureIndex', 'signatureField', 'isCustomGroup']);
+    
+    // Ensure backgroundImage and backgroundColor are included
+    if (canvas.backgroundImage) {
+        canvasState.backgroundImage = canvas.backgroundImage.toObject();
+    }
+    if (canvas.backgroundColor) {
+        canvasState.backgroundColor = canvas.backgroundColor;
+    }
+    
+    // Update current page in canvas_pages array (in memory)
+    cert.canvas_pages[currentPageIndex].state = canvasState;
+    
+    // Also update PROJECT_DATA to persist changes
+    PROJECT_DATA.certificates[currentCertificateIndex].canvas_pages[currentPageIndex].state = canvasState;
+    
+    console.log(`Saving page ${currentPageIndex + 1} state for cert #${cert.id} (${cert.recipient_name})`); // 🔧 Added participant verification
+    
+    // 🔧 Save to server immediately
+    showSaveIndicator('saving');
+    
+    return $.ajax({
+        url: '{{ route("projects.certificates.update") }}',
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+        },
+        contentType: 'application/json',
+        data: JSON.stringify({
+            certificate_id: cert.id,
+            canvas_state: canvasState, // Backward compatibility
+            canvas_pages: cert.canvas_pages // Send all pages
+        }),
+        success: function(response) {
+            if (response.success) {
+                showSaveIndicator('saved');
+                console.log(`Page ${currentPageIndex + 1} saved to server for cert #${cert.id} (${cert.recipient_name})`);
+                PROJECT_DATA.certificates[currentCertificateIndex].is_edited = response.is_edited;
+                
+                // 🔧 BUG FIX: Release save lock and process queue
+                isSaving = false;
+                processQueuedActions();
+            } else {
+                showSaveIndicator('error');
+                console.error('Save failed:', response.message);
+                
+                // 🔧 BUG FIX: Release save lock on error
+                isSaving = false;
+                processQueuedActions();
+            }
+        },
+        error: function(xhr) {
+            showSaveIndicator('error');
+            console.error('Save error:', xhr);
+            
+            // 🔧 BUG FIX: Release save lock on error
+            isSaving = false;
+            processQueuedActions();
+        }
+    });
 }
 
 function showSaveIndicator(state) {

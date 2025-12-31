@@ -41,6 +41,7 @@ Route::post('/projects/certificates/update', [ProjectController::class, 'updateC
 Route::post('/projects/bulk-edit', [ProjectController::class, 'bulkEdit'])->name('projects.bulk-edit');
 Route::post('/projects/{id}/finalize', [ProjectController::class, 'finalize'])->name('projects.finalize');
 Route::get('/projects/{id}/progress', [ProjectController::class, 'getProgress'])->name('projects.progress');
+Route::get('/projects/{id}/generation-progress', [BulkController::class, 'getGenerationProgress'])->name('projects.generation-progress');
 Route::get('/projects/{id}/download', [ProjectController::class, 'download'])->name('projects.download');
 Route::delete('/projects/{id}', [ProjectController::class, 'destroy'])->name('projects.destroy');
 

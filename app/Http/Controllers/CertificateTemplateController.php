@@ -25,6 +25,7 @@ class CertificateTemplateController extends Controller
         $validatedData = $request->validate([
             'name' => 'required|string|max:255|unique:certificate_templates,name',
             'template_data' => 'required|json',
+            'total_pages' => 'nullable|integer|min:1', // 🆕 MULTI-PAGE: Validate total_pages
         ]);
 
         $template = CertificateTemplate::create($validatedData);

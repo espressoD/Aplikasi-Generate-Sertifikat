@@ -3,6 +3,11 @@
 @section('title', 'Generate Sertifikat')
 @section('content-title', 'Generate Sertifikat & Editor Template')
 
+@push('styles')
+<!-- DataTables CSS -->
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap4.min.css">
+@endpush
+
 @section('breadcrumb')
     <li class="breadcrumb-item"><a href="{{ route('dashboard') }}">Dashboard</a></li>
     <li class="breadcrumb-item active">Generate & Edit</li>
@@ -199,7 +204,7 @@
 <div class="card card-info">
     <div class="card-header"><h3 class="card-title">Langkah 2: Kelola & Pilih Template</h3></div>
     <div class="card-body">
-        <table class="table table-hover">
+        <table id="templates-table" class="table table-hover table-bordered table-striped">
             <thead>
                 <tr>
                     <th>Nama Template</th>
@@ -207,7 +212,7 @@
                     <th style="width: 220px;">Aksi</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="template-table-body">
                 @forelse ($templates as $template)
                     <tr>
                         <td id="template-name-{{ $template->id }}">{{ $template->name }}</td>
@@ -279,6 +284,31 @@
                     </div>
                     <button id="remove-element" class="btn btn-danger float-right"><i class="fas fa-trash"></i> Hapus Elemen</button>
                 </div>
+
+                <!-- Multi-Page Navigation -->
+                <div class="card mb-2" style="max-width: 1123px; margin: auto;">
+                    <div class="card-header d-flex justify-content-between align-items-center" style="padding: 10px 20px;">
+                        <!-- Left: Page Tabs -->
+                        <ul class="nav nav-pills mb-0" id="page-tabs" role="tablist">
+                            <li class="nav-item">
+                                <a class="nav-link active" id="page-1-tab" data-page="0" href="#" onclick="switchToPage(0); return false;">
+                                    Hal 1
+                                </a>
+                            </li>
+                        </ul>
+                        
+                        <!-- Right: Page Controls -->
+                        <div class="btn-group btn-group-sm">
+                            <button type="button" class="btn btn-outline-primary" onclick="addNewPage()" title="Tambah Halaman">
+                                <i class="fas fa-plus"></i> Tambah
+                            </button>
+                            <button type="button" class="btn btn-outline-danger" onclick="deletePage()" title="Hapus Halaman Ini">
+                                <i class="fas fa-trash"></i> Hapus
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <div style="border: 1px solid #ccc; width: 100%; max-width: 1123px; height: 794px; margin: auto; position: relative;">
                     <!-- Floating Toolbar (Option A Hybrid) -->
                     <div id="floating-toolbar">
@@ -538,7 +568,6 @@
         const originalSetter = descriptor.set;
         Object.defineProperty(CanvasRenderingContext2D.prototype, 'textBaseline', {
             set: function(value) {
-                // Silently fix the typo
                 if (value === 'alphabetical') {
                     value = 'alphabetic';
                 }
@@ -1738,7 +1767,7 @@
                 formattedText = value || placeholderText;
             }
             
-            // Update canvas text
+            // Update canvas text on CURRENT page
             activeObject.set('text', formattedText);
             if (typeof activeObject.setCoords === 'function') {
                 activeObject.setCoords();
@@ -1748,6 +1777,39 @@
             } else {
                 window.canvas.renderAll();
             }
+
+            // 🆕 MULTI-PAGE: Update same placeholder on ALL other pages
+            this.updatePlaceholderOnAllPages(placeholderText, formattedText);
+        }
+
+        // 🆕 Update same placeholder across all pages
+        updatePlaceholderOnAllPages(placeholderText, formattedText) {
+            if (!window.canvasPages) return;
+
+            // Save current page first
+            if (typeof saveCurrentPageState === 'function') {
+                saveCurrentPageState();
+            }
+
+            // Update placeholder in all pages' saved states
+            window.canvasPages.forEach((page, index) => {
+                if (index === window.currentPageIndex) return; // Skip current page (already updated)
+                if (!page.state || !page.state.objects) return;
+
+                // Find and update placeholder in page state
+                page.state.objects.forEach(obj => {
+                    if (obj.type === 'text' && obj.isPlaceholder && obj.placeholderType === placeholderText) {
+                        obj.text = formattedText;
+                    } else if (obj.type === 'group' && obj.objects) {
+                        // Update placeholders inside groups (signature blocks)
+                        obj.objects.forEach(groupObj => {
+                            if (groupObj.type === 'text' && groupObj.isPlaceholder && groupObj.placeholderType === placeholderText) {
+                                groupObj.text = formattedText;
+                            }
+                        });
+                    }
+                });
+            });
         }
         
         // 🆕 HELPER: Format tanggal ke bahasa Indonesia
@@ -2105,6 +2167,16 @@
         
         // Global state untuk menyimpan checkbox yang dipilih di semua halaman
         window.selectedKaryawanIds = new Set();
+
+        // ========== 📄 MULTI-PAGE CANVAS MANAGEMENT ==========
+        // Initialize multi-page state
+        window.canvasPages = [{
+            id: 1,
+            state: null,
+            bgImage: null,
+            bgColor: '#ffffff'
+        }];
+        window.currentPageIndex = 0;
         
         // ========== FLOATING TOOLBAR & GROUP/UNGROUP ==========
         initFloatingFormattingPreview(canvas);
@@ -2134,6 +2206,317 @@
         bindDatabaseHandlers();
         bindKaryawanCRUD();
     });
+
+    // ========== 📄 MULTI-PAGE MANAGEMENT FUNCTIONS ==========
+    
+    /**
+     * Save current page state before switching pages
+     */
+    function saveCurrentPageState() {
+        if (!window.canvas) return;
+        
+        window.canvasPages[window.currentPageIndex] = {
+            id: window.canvasPages[window.currentPageIndex].id,
+            state: window.canvas.toJSON([
+                'isPlaceholder', 'placeholderType', 
+                'isSignatureBlock', 'signatureIndex',
+                'areaKey', 'isCustomGroup'
+            ]),
+            bgImage: window.backgroundImageSrc || null,
+            bgColor: window.canvasBackgroundColor || '#ffffff'
+        };
+    }
+
+    /**
+     * Switch to specific page
+     */
+    function switchToPage(pageIndex) {
+        if (pageIndex < 0 || pageIndex >= window.canvasPages.length) return;
+        
+        // Allow re-loading same page (remove early return check)
+        // This is needed when deletePage needs to force reload
+        
+        // Save current state (only if currentPageIndex is valid)
+        if (window.currentPageIndex >= 0 && window.currentPageIndex < window.canvasPages.length) {
+            saveCurrentPageState();
+        }
+        
+        // Update index
+        window.currentPageIndex = pageIndex;
+        
+        // Clear canvas
+        window.canvas.clear();
+        
+        const page = window.canvasPages[pageIndex];
+        
+        // Set background color
+        window.canvasBackgroundColor = page.bgColor;
+        window.canvas.backgroundColor = page.bgColor;
+        
+        // Load background image if exists
+        if (page.bgImage) {
+            window.backgroundImageSrc = page.bgImage;
+            loadBackgroundImageFromData(page.bgImage);
+        } else {
+            window.backgroundImageSrc = null;
+        }
+        
+        // Load canvas state if exists
+        if (page.state) {
+            window.canvas.loadFromJSON(page.state, () => {
+                window.canvas.renderAll();
+                if (typeof updatePlaceholderMappings === 'function') {
+                    updatePlaceholderMappings();
+                }
+                // Re-apply shared placeholder data to new page (with small delay to ensure sidebar is ready)
+                setTimeout(() => {
+                    reapplyPlaceholderData();
+                }, 100);
+            });
+        } else {
+            window.canvas.renderAll();
+            setTimeout(() => {
+                reapplyPlaceholderData();
+            }, 100);
+        }
+        
+        // Update UI
+        updatePageTabs();
+    }
+
+    /**
+     * Add new page
+     */
+    function addNewPage() {
+        const newId = window.canvasPages.length + 1;
+        window.canvasPages.push({
+            id: newId,
+            state: null,
+            bgImage: null,
+            bgColor: '#ffffff'
+        });
+        
+        // Add tab to UI
+        const tabsContainer = document.getElementById('page-tabs');
+        const newTab = document.createElement('li');
+        newTab.className = 'nav-item';
+        newTab.innerHTML = `
+            <a class="nav-link" id="page-${newId}-tab" data-page="${newId - 1}" 
+               href="#" onclick="switchToPage(${newId - 1}); return false;">
+                Hal ${newId}
+            </a>
+        `;
+        tabsContainer.appendChild(newTab);
+        
+        // Switch to new page
+        switchToPage(newId - 1);
+        
+        if (typeof toastr !== 'undefined') {
+            toastr.success(`Halaman ${newId} ditambahkan`);
+        }
+    }
+
+    /**
+     * Delete current page
+     */
+    function deletePage() {
+        if (window.canvasPages.length === 1) {
+            if (typeof toastr !== 'undefined') {
+                toastr.warning('Minimal harus ada 1 halaman');
+            } else {
+                alert('Minimal harus ada 1 halaman');
+            }
+            return;
+        }
+        
+        if (!confirm(`Hapus Halaman ${window.currentPageIndex + 1}?`)) return;
+        
+        const deletedIndex = window.currentPageIndex;
+        
+        // Remove page from array
+        window.canvasPages.splice(deletedIndex, 1);
+        
+        // Determine which page to switch to
+        let newIndex;
+        if (deletedIndex >= window.canvasPages.length) {
+            // Deleted last page, go to new last page
+            newIndex = window.canvasPages.length - 1;
+        } else {
+            // Deleted middle/first page, stay at same index (which now shows next page)
+            newIndex = deletedIndex;
+        }
+        
+        // Rebuild tabs first
+        rebuildPageTabs();
+        
+        // Switch to target page (switchToPage now allows reloading same index)
+        switchToPage(newIndex);
+        
+        if (typeof toastr !== 'undefined') {
+            toastr.info('Halaman dihapus');
+        }
+    }
+
+    /**
+     * Update page tabs UI (active state)
+     */
+    function updatePageTabs() {
+        document.querySelectorAll('#page-tabs .nav-link').forEach((tab, index) => {
+            tab.classList.toggle('active', index === window.currentPageIndex);
+        });
+    }
+
+    /**
+     * Rebuild all page tabs from scratch
+     */
+    function rebuildPageTabs() {
+        const tabsContainer = document.getElementById('page-tabs');
+        tabsContainer.innerHTML = '';
+        
+        window.canvasPages.forEach((page, index) => {
+            const tab = document.createElement('li');
+            tab.className = 'nav-item';
+            tab.innerHTML = `
+                <a class="nav-link ${index === window.currentPageIndex ? 'active' : ''}" 
+                   id="page-${index + 1}-tab" data-page="${index}" 
+                   href="#" onclick="switchToPage(${index}); return false;">
+                    Hal ${index + 1}
+                </a>
+            `;
+            tabsContainer.appendChild(tab);
+        });
+    }
+
+    /**
+     * Helper function to load background image from data URL
+     */
+    function loadBackgroundImageFromData(dataURL) {
+        fabric.Image.fromURL(dataURL, (img) => {
+            if (!img) return;
+            
+            const canvasWidth = window.canvas.width;
+            const canvasHeight = window.canvas.height;
+            
+            const scaleX = canvasWidth / img.width;
+            const scaleY = canvasHeight / img.height;
+            
+            img.set({
+                scaleX: scaleX,
+                scaleY: scaleY,
+                selectable: false,
+                evented: false
+            });
+            
+            window.canvas.setBackgroundImage(img, window.canvas.renderAll.bind(window.canvas));
+        });
+    }
+
+    /**
+     * Re-apply shared placeholder data to current page
+     * This ensures all pages use the same data without re-entering
+     */
+    function reapplyPlaceholderData() {
+        if (!window.canvas) {
+            // console.warn('reapplyPlaceholderData: canvas not ready');
+            return;
+        }
+        if (!window.contextualSidebar) {
+            // console.warn('reapplyPlaceholderData: contextualSidebar not ready');
+            return;
+        }
+
+        // console.log('🔄 Re-applying placeholder data to page', window.currentPageIndex + 1);
+        let updateCount = 0;
+
+        // Iterate all text objects with placeholders
+        window.canvas.getObjects('text').forEach(obj => {
+            if (obj.isPlaceholder && obj.placeholderType) {
+                const placeholderText = obj.placeholderType;
+                const mapping = window.contextualSidebar.placeholderMappings[placeholderText];
+                
+                if (mapping) {
+                    let formattedText = '';
+                    
+                    if (mapping.type === 'composite') {
+                        // Use ContextualSidebar's formatting logic
+                        if (placeholderText === '@{{tanggal_penandatanganan}}') {
+                            const place = window.contextualSidebar.getFieldValue('signing_place');
+                            const date = window.contextualSidebar.getFieldValue('signing_date');
+                            
+                            if (place || date) {
+                                const formattedDate = date ? window.contextualSidebar.formatIndonesianDate(date) : '';
+                                formattedText = [place, formattedDate].filter(x => x).join(', ');
+                            }
+                        } else if (placeholderText === '@{{tanggal_acara}}') {
+                            const startDate = window.contextualSidebar.getFieldValue('start_date');
+                            const endDate = window.contextualSidebar.getFieldValue('end_date');
+                            
+                            if (startDate || endDate) {
+                                formattedText = window.contextualSidebar.formatDateRange(startDate, endDate);
+                            }
+                        }
+                    } else {
+                        // Simple text/select fields
+                        const value = window.contextualSidebar.getFieldValue(mapping.field);
+                        formattedText = value || '';
+                    }
+                    
+                    // Always update if we have formatted text (even if empty, to reset placeholder)
+                    if (formattedText) {
+                        const oldText = obj.text;
+                        obj.set('text', formattedText);
+                        updateCount++;
+                        // console.log(`  ✅ Updated ${placeholderText}: "${oldText}" → "${formattedText}"`);
+                    } else {
+                        // No value, reset to placeholder text
+                        if (obj.text !== placeholderText) {
+                            obj.set('text', placeholderText);
+                            // console.log(`  ↩️  Reset ${placeholderText} to placeholder`);
+                        }
+                    }
+                }
+            }
+        });
+
+        // Apply to signature blocks
+        window.canvas.getObjects('group').forEach(group => {
+            if (group.isSignatureBlock !== undefined) {
+                const index = group.signatureIndex;
+                if (index !== undefined) {
+                    group.getObjects().forEach(obj => {
+                        if (obj.type === 'text' && obj.placeholderType) {
+                            const placeholderText = obj.placeholderType;
+                            let formattedText = '';
+                            
+                            // Get signature data from sidebar
+                            if (placeholderText === `@{{nama_penandatangan_${index + 1}}}`) {
+                                formattedText = document.getElementById(`signer-${index + 1}-name`)?.value || '';
+                            } else if (placeholderText === `@{{jabatan_penandatangan_${index + 1}}}`) {
+                                formattedText = document.getElementById(`signer-${index + 1}-title`)?.value || '';
+                            }
+                            
+                            // Always update if we have data
+                            if (formattedText) {
+                                const oldText = obj.text;
+                                obj.set('text', formattedText);
+                                updateCount++;
+                                // console.log(`  ✅ Updated ${placeholderText}: "${oldText}" → "${formattedText}"`);
+                            } else {
+                                // Reset to placeholder if no value
+                                if (obj.text !== placeholderText) {
+                                    obj.set('text', placeholderText);
+                                    // console.log(`  ↩️  Reset ${placeholderText} to placeholder`);
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+        });
+
+        window.canvas.renderAll();
+        // console.log(`✅ Re-apply complete: ${updateCount} placeholders updated`);
+    }
 
 
     // State untuk dropdown warna floating toolbar
@@ -5021,14 +5404,47 @@
     }
 
     function bindTemplateHandlers(canvas, templates) {
+        // 🔄 PERBAIKAN: Unbind existing handlers to prevent duplicates
+        $('.load-template-btn').off('click');
+        $('.edit-template-btn').off('click');
+        $('#save-template').off('click');
+        
         $('.load-template-btn').on('click', function() {
             const id = $(this).data('template-id');
             if (id && templates[id]) {
                 // Store template ID for submission
                 $('#template_id').val(id);
                 
-                const json = JSON.parse(templates[id].template_data);
-                canvas.loadFromJSON(json, () => {
+                const templateData = JSON.parse(templates[id].template_data);
+                
+                // 🆕 MULTI-PAGE: Detect format and auto-convert legacy templates
+                let isMultiPage = false;
+                let pagesData = [];
+                
+                if (templateData.version === 2 && templateData.pages) {
+                    // New multi-page format
+                    isMultiPage = true;
+                    pagesData = templateData.pages;
+                } else {
+                    // Legacy single-page format - auto-convert to array
+                    console.log('Converting legacy single-page template to multi-page format');
+                    isMultiPage = false;
+                    pagesData = [{
+                        id: 1,
+                        state: templateData, // Legacy template_data is the canvas state itself
+                        bgImage: null,
+                        bgColor: '#ffffff'
+                    }];
+                }
+                
+                // 🆕 MULTI-PAGE: Populate canvasPages array
+                window.canvasPages = pagesData;
+                window.currentPageIndex = 0;
+                
+                // 🆕 MULTI-PAGE: Load first page onto canvas
+                const firstPageState = window.canvasPages[0].state;
+                
+                canvas.loadFromJSON(firstPageState, () => {
                     // Backfill areaKey for any objects missing it
                     canvas.getObjects().forEach((obj, idx) => {
                         if (!obj.areaKey) {
@@ -5073,7 +5489,20 @@
                         window.undoRedoManager.clear();
                     }
                     
-                    alert(`Template "${templates[id].name}" berhasil dimuat.`);
+                    // 🆕 MULTI-PAGE: Apply background if exists
+                    if (window.canvasPages[0].bgImage) {
+                        loadBackgroundImageFromData(window.canvasPages[0].bgImage, 0);
+                    }
+                    if (window.canvasPages[0].bgColor) {
+                        canvas.backgroundColor = window.canvasPages[0].bgColor;
+                        canvas.renderAll();
+                    }
+                    
+                    // 🆕 MULTI-PAGE: Rebuild page tabs
+                    rebuildPageTabs();
+                    updatePageTabs();
+                    
+                    alert(`Template "${templates[id].name}" berhasil dimuat (${window.canvasPages.length} halaman).`);
 
                     // After template is loaded, check for any uploaded signature images and apply them
                     setTimeout(() => {
@@ -5115,46 +5544,59 @@
             const name = prompt("Nama template:", "Template " + new Date().toLocaleString());
             if (!name) return;
 
+            // 🆕 MULTI-PAGE: Save current page state before saving template
+            saveCurrentPageState();
+
+            // 🆕 MULTI-PAGE: Prepare template data with pages array
+            const templatePayload = {
+                name: name,
+                total_pages: window.canvasPages.length,
+                template_data: JSON.stringify({
+                    version: 2, // Mark as multi-page format
+                    pages: window.canvasPages // Array of {id, state, bgImage, bgColor}
+                })
+            };
+
             fetch('{{ route('templates.store') }}', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
-                body: JSON.stringify({
-                    name: name,
-                    template_data: JSON.stringify(canvas.toJSON(['isPlaceholder', 'placeholderType', 'isSignatureBlock', 'signatureIndex', 'signatureField', 'areaKey', 'isSignatureName', 'isSignatureTitle']))
-                })
+                body: JSON.stringify(templatePayload)
             }).then(res => res.json()).then(data => {
                 if (data.success) {
                     alert(data.message);
-                    // Auto-refresh template list in UI
-                    fetch('/api/templates')
-                        .then(res => res.json())
-                        .then(list => {
-                            if (list && Array.isArray(list.templates)) {
-                                const tbody = $('table.table-hover tbody');
-                                let html = '';
-                                list.templates.forEach(function(t) {
-                                    html += `<tr>
-                                        <td id="template-name-${t.id}">${t.name}</td>
-                                        <td>${t.created_at}</td>
-                                        <td>
-                                            <div class="btn-group">
-                                                <button type="button" class="btn btn-sm btn-success load-template-btn" data-template-id="${t.id}"><i class="fas fa-check"></i> Muat</button>
-                                                <button type="button" class="btn btn-sm btn-warning edit-template-btn" data-template-id="${t.id}" data-template-name="${t.name}"><i class="fas fa-edit"></i> Ubah Nama</button>
-                                                <form action="/templates/${t.id}" method="POST" style="display:inline;" onsubmit="return confirm('Apakah Anda yakin ingin menghapus template ini?');">
-                                                    <input type="hidden" name="_token" value="{{ csrf_token() }}">
-                                                    <input type="hidden" name="_method" value="DELETE">
-                                                    <button type="submit" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i> Hapus</button>
-                                                </form>
-                                            </div>
-                                        </td>
-                                    </tr>`;
-                                });
-                                tbody.html(html);
-                            }
-                        });
+                    
+                    // 🔄 PERBAIKAN: Update templates object with new template
+                    if (data.template) {
+                        const t = data.template;
+                        templates[t.id] = t;
+                        
+                        // 🔄 DATATABLES: Add new row using DataTables API
+                        if (templatesDataTable) {
+                            templatesDataTable.row.add([
+                                `<span id="template-name-${t.id}">${t.name}</span>`,
+                                new Date(t.created_at).toLocaleString('id-ID', {day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'}),
+                                `<div class="btn-group">
+                                    <button type="button" class="btn btn-sm btn-success load-template-btn" data-template-id="${t.id}"><i class="fas fa-check"></i> Muat</button>
+                                    <button type="button" class="btn btn-sm btn-warning edit-template-btn" data-template-id="${t.id}" data-template-name="${t.name}"><i class="fas fa-edit"></i> Ubah Nama</button>
+                                    <form action="/templates/${t.id}" method="POST" style="display:inline;" onsubmit="return confirm('Apakah Anda yakin ingin menghapus template ini?');">
+                                        <input type="hidden" name="_token" value="{{ csrf_token() }}">
+                                        <input type="hidden" name="_method" value="DELETE">
+                                        <button type="submit" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i> Hapus</button>
+                                    </form>
+                                </div>`
+                            ]).draw(false); // false = stay on current page
+                            
+                            // 🔄 PERBAIKAN: Rebind event handlers for new buttons
+                            bindTemplateHandlers(canvas, templates);
+                        } else {
+                            alert('Template berhasil disimpan, silakan refresh halaman untuk melihat.');
+                        }
+                    }
                 } else {
                     alert('Gagal menyimpan: ' + (data.errors?.name.join(', ') || data.message));
                 }
+            }).catch(err => {
+                alert('Terjadi kesalahan saat menyimpan template.');
             });
         });
 
@@ -5968,7 +6410,12 @@
 
         $('#progress-bar-wrapper').show();
         const bar = document.getElementById('progress-bar');
-        bar.style.width = '0%'; bar.innerText = '0%';
+        bar.style.width = '0%'; 
+        bar.innerText = 'Initializing project...';
+        bar.classList.add('progress-bar-animated');
+        bar.classList.add('progress-bar-striped');
+
+        console.log('🚀 Starting project generation...');
 
         // 🔧 ROBUST SOLUTION: Export canvas using multiple fallback methods
         let dataUrl;
@@ -6048,6 +6495,23 @@
         console.log('Canvas export successful, data URL length:', dataUrl.length);
         formData.append('canvas_image', dataUrl);
 
+        // 🔧 IMPORTANT: Start a placeholder polling to show indeterminate progress
+        // This gives better UX while waiting for server response
+        let pendingProjectId = null;
+        let pollingStarted = false;
+        
+        // Simulate progress while waiting (fake smooth progress 0-10%)
+        let fakeProgress = 0;
+        const fakeInterval = setInterval(() => {
+            if (!pollingStarted && fakeProgress < 10) {
+                fakeProgress += 1;
+                bar.style.width = fakeProgress + '%';
+                bar.innerText = `${fakeProgress}% - Initializing...`;
+            } else {
+                clearInterval(fakeInterval);
+            }
+        }, 200);
+
         fetch(form.action, {
             method: 'POST',
             headers: {'X-CSRF-TOKEN': document.querySelector('input[name="_token"]').value},
@@ -6072,18 +6536,16 @@
             return response.json();
         })
         .then(data => {
-            // NEW: Handle project-based workflow
-            if (data.success && data.redirect_url) {
-                bar.classList.remove('progress-bar-animated');
-                bar.classList.remove('progress-bar-striped');
-                bar.classList.add('bg-success');
-                bar.style.width = '100%';
-                bar.innerText = `✅ ${data.total_certificates} canvas states created! Redirecting to editor...`;
+            // NEW: Handle project-based workflow with real-time progress
+            if (data.success && data.project_id) {
+                console.log('✅ Project created, ID:', data.project_id);
                 
-                // Redirect to project editor (no alert, smoother UX)
-                setTimeout(() => {
-                    window.location.href = data.redirect_url;
-                }, 1000);
+                // Stop fake progress
+                clearInterval(fakeInterval);
+                pollingStarted = true;
+                
+                // Start real polling for this project
+                startGenerationPolling(data.project_id, data.total_certificates, data.redirect_url);
             }
             // LEGACY: Old batch workflow (for backward compatibility)
             else if (data.batchId) {
@@ -6102,6 +6564,74 @@
             // Show more detailed alert
             alert('Terjadi kesalahan saat generate sertifikat:\n\n' + error.message + '\n\nSilakan periksa:\n1. File data peserta sudah valid\n2. Template sudah disimpan\n3. Semua field wajib sudah diisi');
         });
+    }
+
+    function startGenerationPolling(projectId, totalCertificates, redirectUrl) {
+        const bar = document.getElementById('progress-bar');
+        let lastPercentage = 0;
+        let pollCount = 0;
+        
+        console.log(`🔄 Starting progress polling for project ${projectId}, total: ${totalCertificates}`);
+        
+        const interval = setInterval(() => {
+            pollCount++;
+            
+            fetch(`/projects/${projectId}/generation-progress`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success && data.progress) {
+                        const progress = data.progress;
+                        const pct = progress.percentage || 0;
+                        const current = progress.current || 0;
+                        const total = progress.total || totalCertificates;
+                        
+                        // Debug log only when progress changes
+                        if (pct !== lastPercentage || pollCount <= 3) {
+                            console.log(`Progress: ${pct}% - ${current}/${total} - ${progress.currentName || 'Processing...'}`);
+                        }
+                        
+                        // Update progress bar (override fake progress)
+                        if (pct > 0 || current > 0) {
+                            bar.style.width = pct + '%';
+                            bar.innerText = `${pct}% - Generating ${current}/${total}: ${progress.currentName || '...'}`;
+                        }
+                        
+                        lastPercentage = pct;
+                        
+                        // Check if completed
+                        if (progress.status === 'completed' || current >= total) {
+                            clearInterval(interval);
+                            
+                            console.log('✅ Generation completed!');
+                            
+                            bar.classList.remove('progress-bar-animated');
+                            bar.classList.remove('progress-bar-striped');
+                            bar.classList.add('bg-success');
+                            bar.style.width = '100%';
+                            bar.innerText = `✅ ${totalCertificates} canvas states created! Opening editor...`;
+                            
+                            // Open project editor in NEW TAB
+                            setTimeout(() => {
+                                window.open(redirectUrl, '_blank');
+                                
+                                // Show success message
+                                bar.innerText = `✅ Project created! Editor opened in new tab.`;
+                                
+                                // Optional: Reset form
+                                setTimeout(() => {
+                                    if (confirm('Project editor dibuka di tab baru. Reset form untuk generate project lain?')) {
+                                        location.reload();
+                                    }
+                                }, 2000);
+                            }, 1000);
+                        }
+                    }
+                })
+                .catch(err => {
+                    console.error('Progress polling error:', err);
+                    // Don't stop polling on error, just log it
+                });
+        }, 300); // Poll every 300ms for smoother updates
     }
 
     function startPolling(batchId) {
@@ -6427,5 +6957,36 @@
         });
         canvas.requestRenderAll();
     }
+    
+    // 📊 DATATABLES: Initialize template table with pagination
+    let templatesDataTable;
+    $(document).ready(function() {
+        templatesDataTable = $('#templates-table').DataTable({
+            "pageLength": 10,
+            "lengthMenu": [[10, 25, 50, -1], [10, 25, 50, "All"]],
+            "order": [[1, "desc"]], // Sort by date column (newest first)
+            "language": {
+                "search": "Cari:",
+                "lengthMenu": "Tampilkan _MENU_ template",
+                "info": "Menampilkan _START_ sampai _END_ dari _TOTAL_ template",
+                "infoEmpty": "Tidak ada template",
+                "infoFiltered": "(difilter dari _MAX_ total template)",
+                "paginate": {
+                    "first": "Pertama",
+                    "last": "Terakhir",
+                    "next": "Berikutnya",
+                    "previous": "Sebelumnya"
+                },
+                "emptyTable": "Belum ada template yang disimpan. Buat desain di bawah dan klik \"Simpan Template\"."
+            },
+            "columnDefs": [
+                { "orderable": false, "targets": 2 } // Disable sorting on action column
+            ]
+        });
+    });
 </script>
+
+<!-- DataTables JS -->
+<script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap4.min.js"></script>
 @endpush
