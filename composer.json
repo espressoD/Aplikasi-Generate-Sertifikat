@@ -18,6 +18,8 @@
         "laravel/framework": "^7.0",
         "laravel/tinker": "^2.0",
         "maatwebsite/excel": "^3.1",
+        "setasign/fpdf": "1.8",
+        "setasign/fpdi": "2.3",
         "setasign/fpdi-tcpdf": "^2.3",
         "spatie/browsershot": "^3.58"
     },

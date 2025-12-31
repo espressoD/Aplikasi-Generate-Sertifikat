@@ -62,7 +62,7 @@ class CreateProjectZipJob implements ShouldQueue
 
             // Generate ZIP filename
 
-            $zipFilename = 'project-' . $project->id . '-' . Str::slug($project->project_name) . '.zip';
+            $zipFilename = Str::slug($project->project_name) . '.zip';
             $relativeZipPath = 'public/certificates/' . $zipFilename;
             $zipPath = storage_path('app/' . $relativeZipPath);
 

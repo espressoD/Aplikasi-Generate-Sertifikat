@@ -15,6 +15,7 @@ class CertificateTemplate extends Model
         'name',
         'template_data',
         'design_settings',
+        'total_pages', // 🆕 MULTI-PAGE: Number of pages in template
     ];
 
     /**

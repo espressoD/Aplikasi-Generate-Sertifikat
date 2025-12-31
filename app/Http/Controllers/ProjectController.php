@@ -54,10 +54,16 @@ class ProjectController extends Controller
             // Handle both JSON and form-data requests
             $certificateId = $request->input('certificate_id');
             $canvasState = $request->input('canvas_state');
+            $canvasPages = $request->input('canvas_pages'); // 🆕 MULTI-PAGE: Accept canvas_pages
             
             // If canvas_state is string (from JSON.stringify), decode it
             if (is_string($canvasState)) {
                 $canvasState = json_decode($canvasState, true);
+            }
+            
+            // 🆕 MULTI-PAGE: Decode canvas_pages if string
+            if (is_string($canvasPages)) {
+                $canvasPages = json_decode($canvasPages, true);
             }
             
             if (!$certificateId || !$canvasState) {
@@ -80,11 +86,22 @@ class ProjectController extends Controller
             // Log for debugging
             Log::info('Updating certificate', [
                 'id' => $certificate->id,
+                'recipient' => $certificate->recipient_name, // 🔧 ADD: Log participant name
                 'objects_count' => count($canvasState['objects'] ?? []),
-                'has_background' => isset($canvasState['backgroundImage'])
+                'has_background' => isset($canvasState['backgroundImage']),
+                'is_multipage' => $canvasPages !== null,
+                'total_pages' => $canvasPages ? count($canvasPages) : 1,
+                'current_canvas_pages_count' => $certificate->canvas_pages ? count($certificate->canvas_pages) : 0, // 🔧 ADD: Check existing pages
             ]);
 
             $certificate->saveCanvasState($canvasState);
+            
+            // 🆕 MULTI-PAGE: Save canvas_pages if provided (no json_encode - handled by $casts)
+            if ($canvasPages !== null) {
+                $certificate->canvas_pages = $canvasPages; // Laravel auto-encodes via $casts
+                $certificate->save();
+            }
+            
             $certificate->markAsEdited($request->user()->name ?? 'User');
 
             return response()->json([

@@ -19,6 +19,7 @@ class Certificate extends Model
         // Project system fields
         'project_id',
         'canvas_state',
+        'canvas_pages', // 🆕 MULTI-PAGE: Array of page states
         'is_edited',
         'edit_history',
         'page_order',
@@ -27,6 +28,7 @@ class Certificate extends Model
 
     protected $casts = [
         'canvas_state' => 'array',
+        'canvas_pages' => 'array', // 🔧 MULTI-PAGE: Auto-decode JSON
         'is_edited' => 'boolean',
         'pdf_generated_at' => 'datetime',
     ];
