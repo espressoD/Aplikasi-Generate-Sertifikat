@@ -76,15 +76,29 @@
                         </div>
                         <div class="col-md-4">
                             <div class="form-group">
-                                <label for="event_filter">Filter Acara</label>
-                                <select class="form-control" id="event_filter" name="event_filter">
-                                    <option value="">Semua Acara</option>
-                                    @foreach($events as $event)
-                                        <option value="{{ $event }}" {{ request('event_filter') == $event ? 'selected' : '' }}>
-                                            {{ $event }}
-                                        </option>
-                                    @endforeach
-                                </select>
+                                <label for="event_filter">
+                                    <i class="fas fa-calendar-alt"></i> Search Acara
+                                </label>
+                                <div class="input-group">
+                                    <input type="text" 
+                                           class="form-control" 
+                                           id="event_filter" 
+                                           name="event_filter" 
+                                           value="{{ request('event_filter') }}" 
+                                           placeholder="Ketik nama acara untuk mencari..."
+                                           list="eventsList"
+                                           autocomplete="off">
+                                    <datalist id="eventsList">
+                                        @foreach($events as $event)
+                                            <option value="{{ $event }}">
+                                        @endforeach
+                                    </datalist>
+                                    <div class="input-group-append">
+                                        <button class="btn btn-outline-secondary" type="button" id="clearEventFilter" title="Clear">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <div class="col-md-4">
@@ -160,6 +174,12 @@
 $(document).ready(function() {
     let searchTimeout;
     let isLoading = false;
+    
+    // Clear event filter button
+    $('#clearEventFilter').on('click', function() {
+        $('#event_filter').val('');
+        performSearch();
+    });
     
     // Function to show loading state
     function showLoading() {
@@ -297,9 +317,16 @@ $(document).ready(function() {
         }, 500); // 500ms delay
     });
     
-    // Event filter dropdown
+    // Event filter: Only search on Enter or selection (no auto-trigger while typing)
+    $('#event_filter').on('keypress', function(e) {
+        if (e.which === 13) { // Enter key
+            e.preventDefault();
+            performSearch();
+        }
+    });
+    
+    // Trigger search when selecting from datalist
     $('#event_filter').on('change', function() {
-        clearTimeout(searchTimeout);
         performSearch();
     });
     
@@ -333,6 +360,41 @@ $(document).ready(function() {
 
 @push('styles')
 <style>
+/* Autocomplete Input Styling */
+#event_filter {
+    border-right: none;
+}
+
+#event_filter:focus {
+    border-color: #80bdff;
+    box-shadow: none;
+}
+
+#clearEventFilter {
+    border-left: none;
+    background-color: #fff;
+}
+
+#clearEventFilter:hover {
+    background-color: #f8f9fa;
+    color: #dc3545;
+}
+
+.input-group:focus-within #clearEventFilter {
+    border-color: #80bdff;
+}
+
+/* Keyboard key styling */
+kbd {
+    background-color: #f8f9fa;
+    border: 1px solid #ced4da;
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-size: 0.85em;
+    font-family: monospace;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.2);
+}
+
 /* Print styles */
 @media print {
     .btn, .card-tools, .breadcrumb, .pagination {

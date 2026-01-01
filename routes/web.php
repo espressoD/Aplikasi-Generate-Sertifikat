@@ -18,7 +18,6 @@ use App\CertificateBatch;
 // Dashboard
 Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 Route::get('/certificates', [DashboardController::class, 'certificatesList'])->name('certificates.list');
-Route::get('/batches', [DashboardController::class, 'batchesList'])->name('batches.list');
 
 // Sertifikat Bulk
 Route::get('/generate-bulk', [BulkController::class, 'index'])->name('certificates.bulk.form');

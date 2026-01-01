@@ -31,12 +31,6 @@
               <p>Daftar Sertifikat</p>
             </a>
           </li>
-          <li class="nav-item">
-            <a href="{{ route('batches.list') }}" class="nav-link {{ request()->is('batches*') ? 'active' : '' }}">
-              <i class="nav-icon fas fa-boxes"></i>
-              <p>Daftar Batch</p>
-            </a>
-          </li>
         </ul>
       </nav>
       </div>
