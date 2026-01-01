@@ -6570,6 +6570,7 @@
         const bar = document.getElementById('progress-bar');
         let lastPercentage = 0;
         let pollCount = 0;
+        let tabOpened = false; // 🔧 FIX: Prevent double tab opening
         
         console.log(`🔄 Starting progress polling for project ${projectId}, total: ${totalCertificates}`);
         
@@ -6598,8 +6599,9 @@
                         
                         lastPercentage = pct;
                         
-                        // Check if completed
-                        if (progress.status === 'completed' || current >= total) {
+                        // Check if completed (🔧 FIX: Only open tab once)
+                        if ((progress.status === 'completed' || current >= total) && !tabOpened) {
+                            tabOpened = true; // 🔧 FIX: Mark as opened
                             clearInterval(interval);
                             
                             console.log('✅ Generation completed!');
@@ -6610,7 +6612,7 @@
                             bar.style.width = '100%';
                             bar.innerText = `✅ ${totalCertificates} canvas states created! Opening editor...`;
                             
-                            // Open project editor in NEW TAB
+                            // Open project editor in NEW TAB (only once)
                             setTimeout(() => {
                                 window.open(redirectUrl, '_blank');
                                 

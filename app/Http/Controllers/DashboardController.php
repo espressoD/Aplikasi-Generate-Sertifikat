@@ -27,7 +27,7 @@ class DashboardController extends Controller
             ->take(5)
             ->get();
 
-        // Recent certificate batches (more relevant than individual certificates)
+        // Recent certificate batches (legacy - for chart data only)
         $recentBatches = CertificateBatch::latest()->take(5)->get();
 
         // Data for chart: certificate batches per month in last 6 months
@@ -53,17 +53,13 @@ class DashboardController extends Controller
             $chartData = collect([]);
         }
 
-        // Show recent batches instead of paginated batches
-        $certificateBatches = $recentBatches;
-
         return view('dashboard', compact(
             'totalCertificates', 
             'totalEvents',
             'totalProjects',
             'recentProjects',
             'chartLabels',
-            'chartData',
-            'certificateBatches'
+            'chartData'
         ));
     }
 

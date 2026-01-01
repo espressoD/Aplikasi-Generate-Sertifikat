@@ -46,7 +46,7 @@
             <div class="icon">
                 <i class="fas fa-calendar-check"></i>
             </div>
-            <a href="{{ route('batches.list') }}" class="small-box-footer">Info lebih lanjut <i class="fas fa-arrow-circle-right"></i></a>
+            <a href="{{ route('certificates.list') }}" class="small-box-footer">Info lebih lanjut <i class="fas fa-arrow-circle-right"></i></a>
         </div>
     </div>
     <div class="col-lg-3 col-6">
@@ -166,90 +166,6 @@
                 </div>
             </div></div>
         </section>
-    <section class="col-lg-5 connectedSortable">
-        {{-- Ganti seluruh blok <div class="card"> untuk tabel dengan ini --}}
-        <div class="card">
-            <div class="card-header">
-                <h3 class="card-title">5 Batch Sertifikat Terbaru</h3>
-            </div>
-            <div class="card-body">
-                <table class="table table-bordered table-hover">
-                    <thead>
-                        <tr>
-                            <th style="width: 10px">#</th>
-                            <th>Nama Acara</th>
-                            <th>Jumlah Sertifikat</th>
-                            <th>Status</th>
-                            <th>Tanggal</th>
-                            <th style="width: 100px">Aksi</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse ($certificateBatches as $batch)
-                            <tr>
-                                <td>{{ $loop->iteration }}</td>
-                                <td>
-                                    <strong>{{ $batch->event_name }}</strong>
-                                </td>
-                                <td>
-                                    <span class="badge badge-info">
-                                        <i class="fas fa-certificate"></i>
-                                        {{ number_format($batch->completed_jobs) }}
-                                    </span>
-                                </td>
-                                <td>
-                                    @if ($batch->is_zipped)
-                                        <span class="badge badge-success">
-                                            <i class="fas fa-check-circle"></i> Selesai
-                                        </span>
-                                    @else
-                                        <span class="badge badge-warning">
-                                            <i class="fas fa-clock"></i> Proses
-                                        </span>
-                                    @endif
-                                </td>
-                                <td>
-                                    <small class="text-muted">
-                                        <i class="fas fa-calendar"></i>
-                                        {{ $batch->created_at->format('d M Y, H:i') }}
-                                    </small>
-                                </td>
-                                <td>
-                                    @if ($batch->is_zipped)
-                                        @php
-                                            $zipFilename = 'sertifikat-' . Str::slug($batch->event_name) . '-' . $batch->batch_id . '.zip';
-                                        @endphp
-                                        <a href="{{ url('/download-zip/' . $zipFilename) }}" 
-                                           class="btn btn-sm btn-success" 
-                                           title="Download ZIP">
-                                            <i class="fas fa-download"></i>
-                                        </a>
-                                    @else
-                                        <span class="btn btn-sm btn-secondary disabled" title="Sedang Diproses">
-                                            <i class="fas fa-hourglass-half"></i>
-                                        </span>
-                                    @endif
-                                </td>
-                            </tr>
-                        @empty
-                            <tr>
-                                <td colspan="6" class="text-center py-4">
-                                    <i class="fas fa-boxes fa-2x text-muted mb-2"></i>
-                                    <br>
-                                    <span class="text-muted">Belum ada batch sertifikat yang dibuat.</span>
-                                    <br>
-                                    <a href="{{ route('certificates.bulk.form') }}" class="btn btn-sm btn-primary mt-2">
-                                        <i class="fas fa-plus"></i> Buat Batch Pertama
-                                    </a>
-                                </td>
-                            </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-        </div>
-            {{-- Akhir dari blok <div class="card"> untuk tabel --}}
-    </section>
 </div>
 
 @endsection

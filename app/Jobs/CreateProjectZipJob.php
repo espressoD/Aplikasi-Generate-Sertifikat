@@ -96,6 +96,24 @@ class CreateProjectZipJob implements ShouldQueue
             }
 
             Log::info("✅ ZIP created successfully: $zipPath ({$addedFiles} files)");
+            Log::info("Starting cleanup of project folder and PDF files...");
+            $projectFolderName = "project_{$this->projectId}";
+            $projectFolderPath = storage_path("app/public/certificates/{$projectFolderName}");
+            
+            if (File::exists($projectFolderPath) && File::isDirectory($projectFolderPath)) {
+                try {
+                    $filesInFolder = File::files($projectFolderPath);
+                    $fileCount = count($filesInFolder);
+                    Log::info("Found project folder: {$projectFolderPath} with {$fileCount} files");
+                    File::deleteDirectory($projectFolderPath);
+                    
+                    Log::info("🗑️ Successfully deleted project folder: {$projectFolderName} ({$fileCount} files removed, storage space saved!)");
+                } catch (\Exception $e) {
+                    Log::warning("Failed to delete project folder: {$projectFolderPath}. Error: " . $e->getMessage());
+                }
+            } else {
+                Log::warning("Project folder not found or not a directory: {$projectFolderPath}");
+            }
 
             // Update project status
             \DB::reconnect();
